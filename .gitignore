@@ -1,0 +1,87 @@
+# ==========================
+# Python
+# ==========================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+.pytest_cache/
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# ==========================
+# Node.js / Frontend
+# ==========================
+node_modules/
+dist/
+dist-ssr/
+*.local
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# ==========================
+# Editor / OS
+# ==========================
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+.idea/
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+Thumbs.db
+
+# ==========================
+# Project Specific
+# ==========================
+# Databases
+*.db
+*.sqlite
+*.sqlite3
+
+# Chroma vector DB data
+chroma_db/
+backend/chroma_db/
+
+# Debug / test artifacts
+api_resp.json
+backend_test.log
+debug_agent*.txt
+develop_prompts.txt
+http_remove_test.txt
+frontend/frontend.log
+frontend/frontend_err.log

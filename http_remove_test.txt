@@ -1,4 +1,0 @@
-加购1 cart: [{'menu_item_id': 1, 'name': '宫保鸡丁', 'quantity': 1, 'unit_price': 38.0}]
-加购2 cart: [{'menu_item_id': 1, 'name': '宫保鸡丁', 'quantity': 1, 'unit_price': 38.0}, {'menu_item_id': 2, 'name': '麻婆豆腐', 'quantity': 1, 'unit_price': 22.0}]
-移除 cart: [{'menu_item_id': 2, 'name': '麻婆豆腐', 'quantity': 1, 'unit_price': 22.0}]
-移除 response: 已成功将“宫保鸡丁”从购物车中移除。需要我帮您查看当前购物车，或推荐其他菜品吗？

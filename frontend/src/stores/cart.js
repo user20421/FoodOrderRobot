@@ -1,3 +1,7 @@
+/**
+ * 购物车状态管理（Pinia）
+ * 提供购物车增删改查，数据持久化到 localStorage
+ */
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 

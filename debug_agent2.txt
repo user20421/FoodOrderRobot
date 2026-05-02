@@ -1,0 +1,2 @@
+Cart: [{'menu_item_id': 1, 'name': '宫保鸡丁', 'quantity': 1, 'unit_price': 38.0}]
+Response: 好的，已从购物车中移除宫保鸡丁。

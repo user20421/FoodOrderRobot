@@ -1,3 +1,4 @@
+<!-- 智能聊天页面：Markdown 渲染、快捷操作、购物车抽屉、自动滚动 -->
 <template>
   <div class="chat-container">
     <!-- 聊天消息区域 -->

@@ -1,3 +1,7 @@
+/**
+ * 前端应用入口
+ * 初始化 Vue、Pinia、ElementPlus、路由，启动时检测后端重启并清空聊天记录
+ */
 import { createApp } from 'vue'
 import { createPinia } from 'pinia'
 import ElementPlus from 'element-plus'

@@ -1,3 +1,7 @@
+/**
+ * 用户认证状态管理（Pinia）
+ * 管理登录态、角色权限，数据持久化到 localStorage
+ */
 import { ref, computed } from 'vue'
 import { defineStore } from 'pinia'
 

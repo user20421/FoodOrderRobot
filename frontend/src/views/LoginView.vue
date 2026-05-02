@@ -1,3 +1,4 @@
+<!-- 登录/注册页面：支持顾客和商家角色切换 -->
 <template>
   <div class="login-container">
     <el-card class="login-card" shadow="hover">

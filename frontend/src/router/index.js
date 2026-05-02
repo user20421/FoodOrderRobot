@@ -1,3 +1,7 @@
+/**
+ * Vue Router 配置
+ * 定义路由表，导航守卫处理登录鉴权、角色权限、用户切换时重载聊天记录
+ */
 import { createRouter, createWebHistory } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
 import { useChatStore } from '../stores/chat'

@@ -326,5 +326,3 @@ class PromotionAgent(BaseAgent):
 ```
 
 ## License
-
-MIT

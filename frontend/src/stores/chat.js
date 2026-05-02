@@ -1,3 +1,7 @@
+/**
+ * 聊天记录状态管理（Pinia）
+ * 按用户隔离存储聊天消息，支持后端重启后自动清空
+ */
 import { ref } from 'vue'
 import { defineStore } from 'pinia'
 

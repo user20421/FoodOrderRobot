@@ -1,3 +1,7 @@
+/**
+ * Axios 实例封装
+ * 统一配置 baseURL、超时、请求/响应拦截器（注入认证头、处理 401/403）
+ */
 import axios from 'axios'
 
 const api = axios.create({

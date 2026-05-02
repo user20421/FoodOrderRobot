@@ -1,3 +1,4 @@
+<!-- 菜单浏览页面：分类筛选、搜索、卡片式展示、一键加购 -->
 <template>
   <div>
     <div class="toolbar">

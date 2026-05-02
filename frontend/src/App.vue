@@ -1,3 +1,4 @@
+<!-- 根布局组件：侧边栏导航 + 主内容区，根据角色渲染不同菜单 -->
 <template>
   <el-container v-if="!isLoginPage" class="layout-container">
     <el-aside width="220px" class="sidebar">

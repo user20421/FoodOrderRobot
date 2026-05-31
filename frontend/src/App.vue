@@ -100,7 +100,8 @@ const pageTitle = computed(() => {
 function handleLogout() {
   authStore.logout()
   chatStore.clearMessages()
-  cartStore.clearCart()
+  // 只清空内存中的购物车，保留 localStorage（按用户隔离）
+  cartStore.items = []
   router.push('/login')
 }
 </script>

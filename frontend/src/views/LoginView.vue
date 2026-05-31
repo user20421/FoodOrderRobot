@@ -67,10 +67,12 @@ import { ElMessage } from 'element-plus'
 import api from '../api'
 import { useAuthStore } from '../stores/auth'
 import { useChatStore } from '../stores/chat'
+import { useCartStore } from '../stores/cart'
 
 const router = useRouter()
 const authStore = useAuthStore()
 const chatStore = useChatStore()
+const cartStore = useCartStore()
 
 const form = reactive({
   username: '',
@@ -102,6 +104,7 @@ async function handleLogin() {
     const data = res.data
     authStore.setAuth(data.user)
     chatStore.reloadMessages()
+    cartStore.reloadCart()
     ElMessage.success(data.message)
     if (data.user.role === 'admin') {
       router.push('/admin')

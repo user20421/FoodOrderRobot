@@ -1,6 +1,23 @@
 <!-- 智能聊天页面：Markdown 渲染、快捷操作、购物车抽屉、自动滚动 -->
 <template>
   <div class="chat-container">
+    <!-- 数字人 + 语音开关 -->
+    <div class="avatar-area">
+      <DigitalAvatar :status="avatarStatus" />
+      <el-button
+        circle
+        :type="speechEnabled ? 'success' : 'info'"
+        :title="speechEnabled ? '点击关闭语音播报' : '点击开启语音播报'"
+        @click="toggleSpeech"
+        class="speech-toggle"
+      >
+        <el-icon size="16">
+          <Microphone v-if="speechEnabled" />
+          <Mute v-else />
+        </el-icon>
+      </el-button>
+    </div>
+
     <!-- 聊天消息区域 -->
     <div class="chat-messages" ref="messageBox">
       <div
@@ -17,6 +34,7 @@
           <div
             class="message-text"
             v-html="msg.role === 'assistant' ? renderMarkdown(msg.content) : formatText(msg.content)"
+            @click="handleLinkClick"
           ></div>
         </div>
       </div>
@@ -89,17 +107,20 @@
 </template>
 
 <script setup>
-import { ref, nextTick, onMounted } from 'vue'
-import { useRoute } from 'vue-router'
+import { ref, nextTick, onMounted, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { Microphone, Mute } from '@element-plus/icons-vue'
 import { marked } from 'marked'
 import { storeToRefs } from 'pinia'
 import api from '../api'
 import { useCartStore } from '../stores/cart'
 import { useChatStore } from '../stores/chat'
 import { useAuthStore } from '../stores/auth'
+import DigitalAvatar from '../components/DigitalAvatar.vue'
 
 const route = useRoute()
+const router = useRouter()
 const chatStore = useChatStore()
 const authStore = useAuthStore()
 const { messages } = storeToRefs(chatStore)
@@ -108,6 +129,13 @@ const loading = ref(false)
 const cartVisible = ref(false)
 const messageBox = ref(null)
 const cartStore = useCartStore()
+const avatarStatus = ref('idle')
+const recognition = ref(null)
+const speechEnabled = ref(localStorage.getItem('ordering_bot_speech') !== 'false')
+
+watch(speechEnabled, (val) => {
+  localStorage.setItem('ordering_bot_speech', val ? 'true' : 'false')
+})
 
 // Markdown 渲染缓存，避免重复解析
 const markdownCache = new Map()
@@ -134,6 +162,17 @@ function renderMarkdown(text) {
   return html
 }
 
+function handleLinkClick(event) {
+  const anchor = event.target.closest('a')
+  if (anchor) {
+    const href = anchor.getAttribute('href')
+    if (href && href.startsWith('/') && !href.startsWith('//')) {
+      event.preventDefault()
+      router.push(href)
+    }
+  }
+}
+
 async function scrollToBottom() {
   await nextTick()
   if (messageBox.value) {
@@ -150,29 +189,69 @@ async function sendMessage() {
   const text = inputMessage.value.trim()
   if (!text) return
 
+  // 停止语音播报和录音
+  if (window.speechSynthesis) window.speechSynthesis.cancel()
+  if (recognition.value) {
+    try { recognition.value.stop() } catch (_) {}
+  }
+
   chatStore.addMessage({ role: 'user', content: text })
   inputMessage.value = ''
   loading.value = true
+  avatarStatus.value = 'thinking'
   await scrollToBottom()
 
   try {
+    // 深拷贝购物车，避免传递 Vue Proxy 对象给 axios
+    const currentCart = JSON.parse(JSON.stringify(cartStore.items || []))
     const res = await api.post('/chat', {
       user_id: authStore.userId,
       message: text,
-      cart: cartStore.items,
+      cart: currentCart,
     })
     const data = res.data
-    chatStore.addMessage({ role: 'assistant', content: data.response })
-    if (data.cart) {
+    // 构建购物车摘要，作为对话内容的一部分展示给用户
+    let responseText = data.response || ''
+    if (Array.isArray(data.cart) && data.cart.length > 0) {
+      const total = data.cart.reduce((sum, item) => sum + (item.unit_price || 0) * (item.quantity || 1), 0)
+      const cartLines = data.cart.map(item => `• ${item.name} x${item.quantity} = ¥${((item.unit_price || 0) * item.quantity).toFixed(0)}`)
+      const cartSummary = `\n\n────────────\n🛒 当前购物车（合计 ¥${total.toFixed(0)}）\n${cartLines.join('\n')}`
+      // 如果 LLM 回复中已包含"购物车"关键词，避免重复追加
+      if (!responseText.includes('购物车')) {
+        responseText += cartSummary
+      }
       cartStore.setCart(data.cart)
+    } else if (Array.isArray(data.cart) && data.cart.length === 0 && cartStore.items.length > 0) {
+      // 后端返回空 cart，说明订单已提交或购物车已清空
+      cartStore.clearCart()
+      if (!responseText.includes('购物车')) {
+        responseText += '\n\n────────────\n🛒 购物车已清空'
+      }
     }
+    chatStore.addMessage({ role: 'assistant', content: responseText })
+    avatarStatus.value = 'idle'
+    speakText(data.response)
   } catch (err) {
     chatStore.addMessage({ role: 'assistant', content: '抱歉，服务暂时异常，请稍后重试。' })
+    avatarStatus.value = 'idle'
     console.error(err)
   } finally {
     loading.value = false
     await scrollToBottom()
   }
+}
+
+function speakText(text) {
+  if (!speechEnabled.value || !window.speechSynthesis) return
+  const utter = new SpeechSynthesisUtterance(text)
+  utter.lang = 'zh-CN'
+  utter.rate = 1.1
+  window.speechSynthesis.speak(utter)
+}
+
+function toggleSpeech() {
+  speechEnabled.value = !speechEnabled.value
+  localStorage.setItem('ordering_bot_speech', speechEnabled.value ? 'true' : 'false')
 }
 
 async function confirmOrder() {
@@ -211,6 +290,19 @@ async function handleClearChat() {
   box-shadow: 0 2px 12px rgba(0,0,0,0.05);
   padding: 16px;
   position: relative;
+}
+
+.avatar-area {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 0 4px;
+  min-height: 72px;
+}
+
+.speech-toggle {
+  margin-top: 4px;
 }
 
 .chat-messages {

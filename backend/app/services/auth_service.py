@@ -1,72 +1,52 @@
 """
-认证业务服务
+认证服务
 """
 import bcrypt
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from typing import Optional
 
-from app.models.user import User
-
-
-async def get_user_by_username(db: AsyncSession, username: str):
-    result = await db.execute(select(User).where(User.username == username))
-    return result.scalar_one_or_none()
+from app.repositories.user_repo import user_repo
+from app.schemas.auth import UserRegister, UserLogin, UserOut
+from app.core.exceptions import AuthenticationException, BusinessException
 
 
-async def get_user_by_id(db: AsyncSession, user_id: int):
-    result = await db.execute(select(User).where(User.id == user_id))
-    return result.scalar_one_or_none()
-
-
-def _hash_password(password: str) -> str:
-    return bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
-
-
-def _verify_password(plain: str, hashed: str) -> bool:
-    return bcrypt.checkpw(plain.encode("utf-8"), hashed.encode("utf-8"))
-
-
-async def register_user(db: AsyncSession, username: str, password: str):
-    existing = await get_user_by_username(db, username)
+async def register_user(db: AsyncSession, data: UserRegister) -> UserOut:
+    """用户注册"""
+    existing = await user_repo.get_by_username(db, data.username)
     if existing:
-        return None
-    user = User(
-        username=username,
-        password=_hash_password(password),
-        role="customer",
-    )
-    db.add(user)
-    await db.commit()
-    await db.refresh(user)
-    return user
+        raise BusinessException("用户名已存在")
+
+    hashed = bcrypt.hashpw(data.password.encode(), bcrypt.gensalt()).decode()
+    user = await user_repo.create(db, {
+        "username": data.username,
+        "password": hashed,
+        "phone": data.phone,
+        "role": "customer",
+    })
+    return UserOut.model_validate(user)
 
 
-async def authenticate_user(db: AsyncSession, username: str, password: str, role: str = "customer"):
-    user = await get_user_by_username(db, username)
+async def login_user(db: AsyncSession, data: UserLogin) -> UserOut:
+    """用户登录"""
+    user = await user_repo.get_by_username(db, data.username)
     if not user:
-        return None
-    if not _verify_password(password, user.password):
-        return None
-    # 商家登录时验证角色
-    if role == "admin" and user.role != "admin":
-        return None
-    if role == "customer" and user.role == "admin":
-        # admin 也可以登录用户端（可选）
-        pass
-    return user
+        raise AuthenticationException("用户名或密码错误")
+
+    if not bcrypt.checkpw(data.password.encode(), user.password.encode()):
+        raise AuthenticationException("用户名或密码错误")
+
+    return UserOut.model_validate(user)
 
 
 async def init_admin_user(db: AsyncSession):
-    """初始化商家账号 admin/123456"""
-    admin = await get_user_by_username(db, "admin")
+    """初始化商家账号"""
+    admin = await user_repo.get_by_username(db, "admin")
     if not admin:
-        user = User(
-            username="admin",
-            password=_hash_password("123456"),
-            role="admin",
-        )
-        db.add(user)
-        await db.commit()
-        await db.refresh(user)
-        return user
-    return admin
+        hashed = bcrypt.hashpw("123456".encode(), bcrypt.gensalt()).decode()
+        await user_repo.create(db, {
+            "username": "admin",
+            "password": hashed,
+            "role": "admin",
+            "phone": "13800138000",
+        })
+        print("[Init] 商家账号 admin/123456 已创建")

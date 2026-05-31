@@ -1,65 +1,52 @@
 """
-数据库配置
-SQLAlchemy 2.0 异步引擎和会话
+MySQL 数据库连接管理
+使用 SQLAlchemy 2.0 async 模式
 """
 import os
-import pymysql
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy.orm import declarative_base
+import pymysql
 
 from app.core.config import settings
 
-# ORM 基类
-Base = declarative_base()
-
-
+# 同步创建数据库（如果不存在）
 def _ensure_database_exists():
-    """
-    同步方式检查并创建数据库（如果不存在）
-    """
-    # 解析 database_url 获取连接参数
-    # 格式: mysql+aiomysql://user:password@host:port/dbname
-    url = settings.database_url.replace("mysql+aiomysql://", "mysql://")
     try:
-        # 从 settings.database_url 解析 host/port/user/password
-        # 简单解析: 去掉前缀后按 @ 分割
-        rest = url.replace("mysql://", "")
-        creds, host_part = rest.split("@", 1)
-        user, password = creds.split(":", 1)
-        host_port = host_part.split("/", 1)[0]
-        if ":" in host_port:
-            host, port_str = host_port.split(":", 1)
-            port = int(port_str)
-        else:
-            host = host_port
-            port = 3306
+        sync_url = settings.database_url.replace("mysql+aiomysql://", "mysql+pymysql://")
+        from sqlalchemy import create_engine, text
+        engine = create_engine(sync_url, echo=False)
+        with engine.connect() as conn:
+            conn.execute(text("SELECT 1"))
+    except Exception:
+        try:
+            parsed = sync_url.replace("mysql+pymysql://", "").split("@")
+            credentials = parsed[0]
+            host_part = parsed[1]
+            user, password = credentials.split(":")
+            host_db = host_part.split("/")
+            host_port = host_db[0].split(":")
+            host = host_port[0]
+            port = int(host_port[1]) if len(host_port) > 1 else 3306
+            db_name = host_db[1] if len(host_db) > 1 else "shuxiangge_bot"
 
-        conn = pymysql.connect(
-            host=host,
-            port=port,
-            user=user,
-            password=password,
-            charset="utf8mb4",
-        )
-        with conn.cursor() as cursor:
-            cursor.execute("CREATE DATABASE IF NOT EXISTS ordering_bot CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci")
-        conn.commit()
-        conn.close()
-    except Exception as e:
-        print(f"[DB] 创建数据库时出现问题（可能已存在）: {e}")
+            conn = pymysql.connect(host=host, port=port, user=user, password=password)
+            with conn.cursor() as cursor:
+                cursor.execute(f"CREATE DATABASE IF NOT EXISTS {db_name} CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci")
+            conn.commit()
+            conn.close()
+        except Exception as e:
+            print(f"[Database] 自动创建数据库失败: {e}")
 
 
-def _create_engine():
-    _ensure_database_exists()
-    return create_async_engine(
-        settings.database_url,
-        echo=settings.debug,
-        future=True,
-        pool_recycle=3600,
-    )
+_ensure_database_exists()
 
-
-engine = _create_engine()
+# 异步引擎
+engine = create_async_engine(
+    settings.database_url,
+    echo=settings.debug,
+    pool_pre_ping=True,
+    pool_recycle=3600,
+)
 
 # 异步会话工厂
 AsyncSessionLocal = async_sessionmaker(
@@ -67,29 +54,23 @@ AsyncSessionLocal = async_sessionmaker(
     class_=AsyncSession,
     expire_on_commit=False,
     autoflush=False,
-    autocommit=False,
 )
 
+# ORM 基类
+Base = declarative_base()
 
-async def get_db() -> AsyncSession:
-    """
-    FastAPI Depends 使用的异步数据库会话生成器
-    """
+
+async def init_db():
+    """初始化数据库表结构"""
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    print("[Database] 数据库表初始化完成")
+
+
+async def get_db():
+    """FastAPI 依赖注入用"""
     async with AsyncSessionLocal() as session:
         try:
             yield session
         finally:
             await session.close()
-
-
-async def init_db():
-    """
-    初始化数据库表结构
-    默认仅 create_all（安全），仅在 RECREATE_DB=true 时才会 drop_all
-    """
-    recreate = os.environ.get("RECREATE_DB", "false").lower() == "true"
-    async with engine.begin() as conn:
-        if recreate:
-            print("[DB] RECREATE_DB=true，正在重建数据库表...")
-            await conn.run_sync(Base.metadata.drop_all)
-        await conn.run_sync(Base.metadata.create_all)

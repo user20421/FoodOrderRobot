@@ -1,15 +1,27 @@
 /**
  * 购物车状态管理（Pinia）
- * 提供购物车增删改查，数据持久化到 localStorage
+ * 按用户隔离存储购物车数据，持久化到 localStorage
  */
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 
-const CART_STORAGE_KEY = 'ordering_bot_cart'
+function getCartStorageKey() {
+  try {
+    const authRaw = localStorage.getItem('ordering_bot_auth')
+    if (authRaw) {
+      const auth = JSON.parse(authRaw)
+      return `ordering_bot_cart_${auth.id || 'guest'}`
+    }
+  } catch (e) {
+    console.error('获取用户ID失败', e)
+  }
+  return 'ordering_bot_cart_guest'
+}
 
 function loadCart() {
+  const key = getCartStorageKey()
   try {
-    const raw = localStorage.getItem(CART_STORAGE_KEY)
+    const raw = localStorage.getItem(key)
     if (raw) {
       const parsed = JSON.parse(raw)
       if (Array.isArray(parsed)) return parsed
@@ -30,6 +42,10 @@ export const useCartStore = defineStore('cart', () => {
   const totalPrice = computed(() =>
     items.value.reduce((sum, item) => sum + item.unit_price * item.quantity, 0)
   )
+
+  function reloadCart() {
+    items.value = loadCart()
+  }
 
   function setCart(newItems) {
     items.value = newItems || []
@@ -56,11 +72,26 @@ export const useCartStore = defineStore('cart', () => {
 
   function save() {
     try {
-      localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(items.value))
+      const key = getCartStorageKey()
+      localStorage.setItem(key, JSON.stringify(items.value))
     } catch (e) {
       console.error('保存购物车失败', e)
     }
   }
 
-  return { items, totalCount, totalPrice, setCart, updateQuantity, removeItem, clearCart }
+  return { items, totalCount, totalPrice, reloadCart, setCart, updateQuantity, removeItem, clearCart }
 })
+
+/**
+ * 清空所有用户的购物车数据（用于项目重新运行时）
+ */
+export function clearAllCartStorage() {
+  const keysToRemove = []
+  for (let i = 0; i < localStorage.length; i++) {
+    const key = localStorage.key(i)
+    if (key && key.startsWith('ordering_bot_cart_')) {
+      keysToRemove.push(key)
+    }
+  }
+  keysToRemove.forEach((k) => localStorage.removeItem(k))
+}

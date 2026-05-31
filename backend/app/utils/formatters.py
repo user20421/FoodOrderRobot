@@ -1,41 +1,72 @@
 """
-格式化工具
-提供订单、菜单等数据的文本格式化功能
+文本格式化工具
 """
+from datetime import datetime
 
 
-def format_order_to_txt(order) -> str:
-    """将单个订单格式化为 TXT 文本"""
-    lines = [
-        "=" * 50,
-        f"订单号：{order.id}",
-        f"用户ID：{order.user_id}",
-        f"状态：{order.status}",
-        f"下单时间：{order.created_at.strftime('%Y-%m-%d %H:%M:%S') if order.created_at else '-'}",
-        f"总价：{order.total_price} 元",
-        "-" * 50,
-        "菜品明细：",
-    ]
-    for oi in order.items:
-        name = oi.menu_item.name if oi.menu_item else f"菜品#{oi.menu_item_id}"
-        subtotal = oi.unit_price * oi.quantity
-        lines.append(f"  {name}  x{oi.quantity}  单价：{oi.unit_price}元  小计：{subtotal}元")
-    lines.append("=" * 50)
+def format_price(price: float) -> str:
+    """格式化价格"""
+    return f"{price:.2f}"
+
+
+def format_datetime(dt: datetime) -> str:
+    """格式化日期时间"""
+    if dt:
+        return dt.strftime("%Y-%m-%d %H:%M")
+    return ""
+
+
+def order_status_text(status: str) -> str:
+    """订单状态转中文"""
+    mapping = {
+        "pending": "待确认",
+        "confirmed": "已确认",
+        "completed": "已完成",
+        "cancelled": "已取消",
+    }
+    return mapping.get(status, status)
+
+
+def order_status_type(status: str) -> str:
+    """订单状态转 Element UI tag type"""
+    mapping = {
+        "pending": "warning",
+        "confirmed": "primary",
+        "completed": "success",
+        "cancelled": "info",
+    }
+    return mapping.get(status, "")
+
+
+def cart_summary(cart: list) -> str:
+    """购物车摘要"""
+    if not cart:
+        return "购物车为空"
+    lines = []
+    for item in cart:
+        subtotal = item.get("unit_price", 0) * item.get("quantity", 1)
+        lines.append(f"  {item['name']} x{item['quantity']} = {subtotal:.2f}元")
     return "\n".join(lines)
 
 
-def format_orders_to_txt(orders: list, title: str = "订单列表") -> str:
-    """将多个订单格式化为 TXT 文本"""
-    if not orders:
-        return "暂无订单记录。"
+def export_order_text(order: dict) -> str:
+    """导出订单为文本格式"""
     lines = [
-        "=" * 60,
-        f"  {title}",
-        f"  共 {len(orders)} 笔订单",
-        "=" * 60,
-        "",
+        "=" * 40,
+        "          本店订单详情",
+        "=" * 40,
+        f"订单号: {order.get('id', '')}",
+        f"状态: {order_status_text(order.get('status', ''))}",
+        f"下单时间: {format_datetime(order.get('created_at'))}",
+        "-" * 40,
+        "菜品明细:",
     ]
-    for order in orders:
-        lines.append(format_order_to_txt(order))
-        lines.append("")
+    for item in order.get("items", []):
+        lines.append(f"  {item['name']} x{item['quantity']}  {item['unit_price']}元")
+    lines.extend([
+        "-" * 40,
+        f"合计: {order.get('total_price', 0):.2f}元",
+        "=" * 40,
+        "感谢光临本店，期待再次为您服务！",
+    ])
     return "\n".join(lines)

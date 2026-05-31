@@ -1,66 +1,97 @@
 """
-订单业务服务
+订单服务
 """
 from sqlalchemy.ext.asyncio import AsyncSession
+from typing import List, Optional
 
-from app.repositories import order as order_repo
-from app.repositories import menu as menu_repo
+from app.repositories.order_repo import order_repo, order_item_repo
+from app.repositories.menu_repo import menu_item_repo
+from app.schemas.order import OrderCreate, OrderOut, CartItem, OrderItemOut
+from app.core.exceptions import BusinessException, NotFoundException
 
 
-async def create_order(db: AsyncSession, user_id: int, items: list[dict]):
-    """
-    创建订单
-    items: list of {"menu_item_id": int, "quantity": int}
-    返回订单对象，库存不足时返回错误信息字典
-    """
-    # 一次性查询所有需要的菜单项
-    menu_item_ids = {item["menu_item_id"] for item in items}
-    menu_items_map = {}
-    for mid in menu_item_ids:
-        menu_item = await menu_repo.get_menu_item_by_id(db, mid)
-        if menu_item:
-            menu_items_map[mid] = menu_item
+async def create_order(db: AsyncSession, user_id: int, items: List[CartItem], remark: str = None) -> OrderOut:
+    """创建订单"""
+    if not items:
+        raise BusinessException("购物车不能为空")
 
-    # 检查库存
-    stock_errors = []
-    for item in items:
-        menu_item = menu_items_map.get(item["menu_item_id"])
-        if not menu_item:
-            stock_errors.append(f"菜品#{item['menu_item_id']} 不存在")
-            continue
-        quantity = item.get("quantity", 1)
-        if menu_item.stock < quantity:
-            stock_errors.append(f"{menu_item.name} 库存不足，仅剩 {menu_item.stock} 份")
-
-    if stock_errors:
-        return {"error": "、".join(stock_errors)}
-
-    # 计算总价并扣减库存（在同一事务中）
-    order_items_detail = []
     total_price = 0.0
+    order_items_data = []
 
+    # 验证库存并计算总价
     for item in items:
-        menu_item = menu_items_map.get(item["menu_item_id"])
+        menu_item = await menu_item_repo.get(db, item.menu_item_id)
         if not menu_item:
-            continue
-        quantity = item.get("quantity", 1)
-        unit_price = menu_item.price
-        total_price += unit_price * quantity
-        order_items_detail.append({
-            "menu_item_id": menu_item.id,
-            "quantity": quantity,
-            "unit_price": unit_price,
+            raise NotFoundException(f"菜品不存在: {item.name}")
+        if menu_item.stock < item.quantity:
+            raise BusinessException(f"'{menu_item.name}' 库存不足，仅剩 {menu_item.stock} 份")
+
+        total_price += menu_item.price * item.quantity
+        order_items_data.append({
+            "menu_item_id": item.menu_item_id,
+            "quantity": item.quantity,
+            "unit_price": menu_item.price,
         })
-        # 扣减库存
-        menu_item.stock -= quantity
 
-    if not order_items_detail:
+    # 创建订单
+    order = await order_repo.create(db, {
+        "user_id": user_id,
+        "status": "confirmed",
+        "total_price": total_price,
+        "remark": remark,
+    })
+
+    # 创建订单项并扣减库存
+    for oi_data in order_items_data:
+        oi_data["order_id"] = order.id
+        await order_item_repo.create(db, oi_data)
+        await menu_item_repo.update_stock(db, oi_data["menu_item_id"], -oi_data["quantity"])
+        await menu_item_repo.increment_sales(db, oi_data["menu_item_id"], oi_data["quantity"])
+
+    # 重新加载带items的订单
+    order = await order_repo.get_with_items(db, order.id)
+    return _format_order(order)
+
+
+async def get_user_orders(db: AsyncSession, user_id: int, limit: int = 20) -> List[OrderOut]:
+    """获取用户订单"""
+    orders = await order_repo.get_by_user(db, user_id, limit)
+    return [_format_order(o) for o in orders]
+
+
+async def get_order_detail(db: AsyncSession, order_id: int) -> Optional[OrderOut]:
+    """获取订单详情"""
+    order = await order_repo.get_with_items(db, order_id)
+    if not order:
         return None
-
-    # 创建订单（内部会 commit，且库存修改也在同一 session 中）
-    order = await order_repo.create_order(db, user_id, order_items_detail, total_price)
-    return order
+    return _format_order(order)
 
 
-async def get_order(db: AsyncSession, order_id: int):
-    return await order_repo.get_order_by_id(db, order_id)
+async def get_all_orders(db: AsyncSession, skip: int = 0, limit: int = 100) -> List[OrderOut]:
+    """获取所有订单（商家）"""
+    orders = await order_repo.get_all_orders(db, skip, limit)
+    return [_format_order(o) for o in orders]
+
+
+def _format_order(order) -> OrderOut:
+    """格式化订单输出"""
+    items = []
+    for oi in order.items:
+        items.append(OrderItemOut(
+            id=oi.id,
+            menu_item_id=oi.menu_item_id,
+            name=oi.menu_item.name if oi.menu_item else "未知菜品",
+            quantity=oi.quantity,
+            unit_price=oi.unit_price,
+            subtotal=oi.quantity * oi.unit_price,
+        ))
+    return OrderOut(
+        id=order.id,
+        user_id=order.user_id,
+        status=order.status,
+        total_price=order.total_price,
+        remark=order.remark,
+        items=items,
+        created_at=order.created_at,
+        updated_at=order.updated_at,
+    )

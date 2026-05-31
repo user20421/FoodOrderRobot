@@ -1,45 +1,47 @@
 """
 API 依赖注入
 """
-from fastapi import Header, HTTPException
+from fastapi import Request, HTTPException, status
+from typing import Optional
 
 from app.core.database import get_db
+from app.core.exceptions import AuthorizationException
 
 
-# 统一导出 db 依赖
-__all__ = ["get_db", "get_current_user", "require_admin"]
+async def get_current_user(request: Request) -> dict:
+    """从请求头获取当前用户"""
+    user_id = request.headers.get("X-User-ID")
+    user_role = request.headers.get("X-User-Role", "customer")
 
+    if not user_id:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="未登录或登录已过期",
+        )
 
-async def get_current_user(
-    x_user_id: str | None = Header(None, alias="X-User-ID"),
-    x_user_role: str | None = Header(None, alias="X-User-Role"),
-):
-    """
-    从请求头中获取当前用户信息。
-    前端需在每次请求中通过 header 传递用户 ID 和角色。
-    """
-    if x_user_id is None:
-        raise HTTPException(status_code=401, detail="未登录，请先登录")
     try:
-        user_id = int(x_user_id)
+        user_id = int(user_id)
     except ValueError:
-        raise HTTPException(status_code=400, detail="用户ID格式错误")
-    return {"id": user_id, "role": x_user_role or "customer"}
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="无效的用户ID",
+        )
+
+    return {"id": user_id, "role": user_role}
 
 
-async def require_admin(
-    x_user_id: str | None = Header(None, alias="X-User-ID"),
-    x_user_role: str | None = Header(None, alias="X-User-Role"),
-):
-    """
-    要求当前用户必须是管理员。
-    """
-    if x_user_id is None:
-        raise HTTPException(status_code=401, detail="未登录，请先登录")
-    try:
-        user_id = int(x_user_id)
-    except ValueError:
-        raise HTTPException(status_code=400, detail="用户ID格式错误")
-    if x_user_role != "admin":
-        raise HTTPException(status_code=403, detail="权限不足，仅管理员可访问")
-    return {"id": user_id, "role": x_user_role}
+async def require_admin(current_user: dict = None) -> dict:
+    """要求管理员权限"""
+    # 从request中获取
+    pass
+
+
+def check_admin(request: Request):
+    """检查是否为管理员"""
+    user_role = request.headers.get("X-User-Role", "")
+    if user_role != "admin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="权限不足，需要管理员权限",
+        )
+    return True

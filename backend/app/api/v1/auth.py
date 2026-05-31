@@ -1,36 +1,33 @@
 """
-认证 API
-POST /api/v1/auth/register
-POST /api/v1/auth/login
+认证路由
+保持与原后端API格式兼容
 """
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_db
-from app.schemas.auth import UserRegister, UserLogin, LoginResponse, UserOut
-from app.services.auth_service import register_user, authenticate_user
+from app.core.database import get_db
+from app.core.exceptions import AuthenticationException, BusinessException
+from app.schemas.auth import UserRegister, UserLogin, UserOut, AuthResponse
+from app.services.auth_service import register_user, login_user
 
 router = APIRouter()
 
 
 @router.post("/auth/register")
-async def user_register(data: UserRegister, db: AsyncSession = Depends(get_db)):
-    """用户注册（仅支持顾客注册）"""
-    if not data.username or not data.password:
-        raise HTTPException(status_code=400, detail="用户名和密码不能为空")
-    user = await register_user(db, data.username, data.password)
-    if not user:
-        raise HTTPException(status_code=400, detail="用户名已存在")
-    return {"message": "注册成功", "user": UserOut(id=user.id, username=user.username, role=user.role)}
+async def register(data: UserRegister, db: AsyncSession = Depends(get_db)):
+    """用户注册"""
+    try:
+        user = await register_user(db, data)
+        return {"message": "注册成功", "user": user}
+    except BusinessException as e:
+        raise HTTPException(status_code=e.status_code, detail=e.message)
 
 
-@router.post("/auth/login", response_model=LoginResponse)
-async def user_login(data: UserLogin, db: AsyncSession = Depends(get_db)):
-    """用户/商家登录"""
-    user = await authenticate_user(db, data.username, data.password, data.role)
-    if not user:
-        raise HTTPException(status_code=401, detail="用户名或密码错误")
-    return LoginResponse(
-        user=UserOut(id=user.id, username=user.username, role=user.role),
-        message="登录成功",
-    )
+@router.post("/auth/login", response_model=AuthResponse)
+async def login(data: UserLogin, db: AsyncSession = Depends(get_db)):
+    """用户登录"""
+    try:
+        result = await login_user(db, data)
+        return AuthResponse(user=result, message="登录成功")
+    except AuthenticationException as e:
+        raise HTTPException(status_code=e.status_code, detail=e.message)

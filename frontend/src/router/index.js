@@ -5,6 +5,7 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
 import { useChatStore } from '../stores/chat'
+import { useCartStore } from '../stores/cart'
 
 const routes = [
   { path: '/login', name: 'Login', component: () => import('../views/LoginView.vue'), meta: { public: true } },
@@ -45,7 +46,9 @@ router.beforeEach((to, from, next) => {
     lastUserId = currentUserId
     sessionStorage.setItem('ordering_bot_last_user_id', lastUserId || '')
     const chatStore = useChatStore()
+    const cartStore = useCartStore()
     chatStore.reloadMessages()
+    cartStore.reloadCart()
   }
 
   next()

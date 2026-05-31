@@ -1,14 +1,34 @@
+# Web Framework
 fastapi>=0.110.0
 uvicorn[standard]>=0.27.0
+python-multipart>=0.0.29
+
+# Database
 sqlalchemy[asyncio]>=2.0.0
 aiomysql>=0.2.0
 pymysql>=1.1.0
-pydantic>=2.0.0
-pydantic-settings>=2.0.0
+motor>=3.3.0
+
+# AI / LLM
 langchain>=0.2.0
 langchain-community>=0.2.0
 langchain-chroma>=0.1.0
 chromadb>=0.4.0
 langgraph>=0.0.50
 dashscope>=1.14.0
+
+# RAG
+rank-bm25>=0.2.2
+
+# Data Validation
+pydantic>=2.0.0
+pydantic-settings>=2.0.0
+
+# Utils
 python-dotenv>=1.0.0
+bcrypt>=4.1.0
+
+# Testing
+pytest>=8.0.0
+pytest-asyncio>=0.23.0
+httpx>=0.27.0

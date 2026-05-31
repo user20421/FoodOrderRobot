@@ -1,21 +1,19 @@
 """
-菜单 API
-GET /api/v1/menu
+菜单路由
+保持与原后端API格式兼容
 """
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_db
+from app.core.database import get_db
 from app.schemas.menu import MenuItemOut
-from app.services.menu_service import get_menu
+from app.services.menu_service import get_menu_items
 
 router = APIRouter()
 
 
 @router.get("/menu", response_model=list[MenuItemOut])
-async def list_menu(db: AsyncSession = Depends(get_db)):
-    """
-    获取所有菜单列表
-    """
-    items = await get_menu(db)
+async def get_menu(db: AsyncSession = Depends(get_db)):
+    """获取完整菜单"""
+    items = await get_menu_items(db)
     return items

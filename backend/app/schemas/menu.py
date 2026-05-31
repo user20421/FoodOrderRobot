@@ -1,34 +1,55 @@
 """
-菜单相关 Pydantic v2 Schema
+菜单相关Schema
 """
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, Field
+from typing import Optional, List
+from datetime import datetime
+
+
+class MenuCategoryOut(BaseModel):
+    id: int
+    name: str
+    sort_order: int
+    description: Optional[str] = None
+
+    model_config = {"from_attributes": True}
 
 
 class MenuItemBase(BaseModel):
-    name: str = Field(..., min_length=1, max_length=100, description="菜品名称")
-    description: str | None = Field(default=None, max_length=500, description="菜品描述")
-    price: float = Field(..., gt=0, description="价格必须大于0")
-    spicy_level: int = Field(default=0, ge=0, le=5, description="辣度 0-5")
-    category: str | None = Field(default=None, max_length=50, description="分类")
-    tags: str | None = Field(default=None, max_length=200, description="标签，逗号分隔")
-    stock: int = Field(default=100, ge=0, description="库存数量")
+    name: str = Field(..., max_length=100)
+    description: Optional[str] = None
+    price: float = Field(..., gt=0)
+    spicy_level: int = Field(default=0, ge=0, le=5)
+    category: str
+    tags: Optional[str] = None
+    stock: int = Field(default=100, ge=0)
 
 
 class MenuItemCreate(MenuItemBase):
     pass
 
 
-class MenuItemOut(MenuItemBase):
-    model_config = ConfigDict(from_attributes=True)
-
-    id: int
-
-
 class MenuItemUpdate(BaseModel):
-    name: str | None = Field(default=None, min_length=1, max_length=100)
-    description: str | None = Field(default=None, max_length=500)
-    price: float | None = Field(default=None, gt=0)
-    spicy_level: int | None = Field(default=None, ge=0, le=5)
-    category: str | None = Field(default=None, max_length=50)
-    tags: str | None = Field(default=None, max_length=200)
-    stock: int | None = Field(default=None, ge=0)
+    name: Optional[str] = None
+    description: Optional[str] = None
+    price: Optional[float] = None
+    spicy_level: Optional[int] = None
+    category: Optional[str] = None
+    tags: Optional[str] = None
+    stock: Optional[int] = None
+    is_recommended: Optional[int] = None
+
+
+class MenuItemOut(MenuItemBase):
+    id: int
+    is_recommended: int
+    sales_count: int
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class MenuResponse(BaseModel):
+    categories: List[MenuCategoryOut]
+    items: List[MenuItemOut]

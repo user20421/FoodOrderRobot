@@ -1,36 +1,50 @@
 """
-订单相关 Pydantic v2 Schema
+订单相关Schema
 """
+from pydantic import BaseModel, Field
+from typing import Optional, List
 from datetime import datetime
-from pydantic import BaseModel, ConfigDict, Field
 
 
-class OrderItemCreate(BaseModel):
+class CartItem(BaseModel):
     menu_item_id: int
-    quantity: int = Field(default=1, ge=1, description="数量至少为1")
+    name: str
+    quantity: int = Field(..., gt=0)
+    unit_price: float
 
 
 class OrderItemOut(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
     id: int
     menu_item_id: int
+    name: str
     quantity: int
     unit_price: float
-    menu_item_name: str = ""
+    subtotal: float
+
+    model_config = {"from_attributes": True}
 
 
 class OrderCreate(BaseModel):
-    user_id: int
-    items: list[OrderItemCreate]
+    items: List[CartItem]
+    remark: Optional[str] = None
 
 
 class OrderOut(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
     id: int
     user_id: int
     status: str
     total_price: float
+    remark: Optional[str] = None
+    items: List[OrderItemOut] = []
     created_at: datetime
-    items: list[OrderItemOut] = Field(default_factory=list)
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class OrderExport(BaseModel):
+    id: int
+    status: str
+    total_price: float
+    created_at: datetime
+    item_summary: str

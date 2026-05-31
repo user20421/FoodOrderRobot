@@ -63,14 +63,12 @@ import { ref, computed, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import api from '../api'
 import { useCartStore } from '../stores/cart'
-import { useAuthStore } from '../stores/auth'
 
 const items = ref([])
 const search = ref('')
 const filterCategory = ref('')
 const loadingId = ref(null)
 const cartStore = useCartStore()
-const authStore = useAuthStore()
 
 const filteredItems = computed(() => {
   return items.value.filter((item) => {
@@ -91,24 +89,33 @@ function spicyText(level) {
   return '辣'.repeat(level)
 }
 
-async function addToCart(item) {
+function addToCart(item) {
   loadingId.value = item.id
-  try {
-    const res = await api.post('/chat', {
-      user_id: authStore.userId,
-      message: `来一份${item.name}`,
-      cart: cartStore.items,
-    })
-    const data = res.data
-    if (data.cart) {
-      cartStore.setCart(data.cart)
-      ElMessage.success({ message: `已加购：${item.name}`, duration: 1500 })
-    }
-  } catch (err) {
-    ElMessage.error('加购失败')
-  } finally {
-    loadingId.value = null
+
+  // 本地直接操作购物车，不经过 LLM，更可靠
+  const existing = cartStore.items.find((i) => i.menu_item_id === item.id)
+  let newItems
+  if (existing) {
+    newItems = cartStore.items.map((i) =>
+      i.menu_item_id === item.id
+        ? { ...i, quantity: i.quantity + 1 }
+        : i
+    )
+  } else {
+    newItems = [
+      ...cartStore.items,
+      {
+        menu_item_id: item.id,
+        name: item.name,
+        quantity: 1,
+        unit_price: item.price,
+      },
+    ]
   }
+  cartStore.setCart(newItems)
+  ElMessage.success({ message: `已加购：${item.name}`, duration: 1500 })
+
+  loadingId.value = null
 }
 
 onMounted(async () => {

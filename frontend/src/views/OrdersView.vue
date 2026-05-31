@@ -33,7 +33,7 @@
         <el-table-column label="菜品明细">
           <template #default="scope">
             <div v-for="it in scope.row.items" :key="it.id" class="item-row">
-              {{ it.menu_item_name || ('菜品#' + it.menu_item_id) }} × {{ it.quantity }}
+              {{ it.name || ('菜品#' + it.menu_item_id) }} × {{ it.quantity }}
             </div>
           </template>
         </el-table-column>

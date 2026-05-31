@@ -12,6 +12,7 @@ import App from './App.vue'
 import router from './router'
 import { getStartupTime } from './api/system'
 import { clearAllChatStorage } from './stores/chat'
+import { clearAllCartStorage } from './stores/cart'
 
 async function bootstrap() {
   // 启动时检查后端是否重新运行，若是则清空所有聊天记录
@@ -21,7 +22,10 @@ async function bootstrap() {
     const lastTime = localStorage.getItem('ordering_bot_last_startup')
     if (lastTime && lastTime !== newTime) {
       clearAllChatStorage()
+      clearAllCartStorage()
     }
+    // 清除旧的全局购物车 key（迁移用，一次性）
+    localStorage.removeItem('ordering_bot_cart')
     localStorage.setItem('ordering_bot_last_startup', newTime)
   } catch (e) {
     console.error('获取启动时间失败', e)

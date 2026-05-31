@@ -1,22 +1,33 @@
 """
-聊天相关 Pydantic v2 Schema
+聊天相关Schema
 """
 from pydantic import BaseModel, Field
+from typing import Optional, List
+from datetime import datetime
 
 
-class CartItem(BaseModel):
-    menu_item_id: int
-    name: str
-    quantity: int = Field(default=1, ge=1, description="数量至少为1")
-    unit_price: float = Field(default=0, ge=0, description="单价")
+class ChatMessage(BaseModel):
+    role: str = Field(..., pattern="^(user|assistant|system)$")
+    content: str
 
 
 class ChatRequest(BaseModel):
     user_id: int
-    message: str = Field(..., min_length=1, description="用户输入消息")
-    cart: list[CartItem] | None = None
+    message: str
+    cart: Optional[List[dict]] = []
 
 
 class ChatResponse(BaseModel):
     response: str
-    cart: list[CartItem] | None = None
+    cart: List[dict] = []
+    intent: Optional[str] = None
+    agent: Optional[str] = None
+
+
+class ChatHistoryOut(BaseModel):
+    id: int
+    role: str
+    message: str
+    created_at: datetime
+
+    model_config = {"from_attributes": True}

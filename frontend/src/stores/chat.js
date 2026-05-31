@@ -76,7 +76,7 @@ export const useChatStore = defineStore('chat', () => {
     }
   }
 
-  return { messages, reloadMessages, addMessage, setMessages, clearMessages }
+  return { messages, reloadMessages, addMessage, setMessages, clearMessages, save }
 })
 
 /**

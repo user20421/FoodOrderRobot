@@ -1,61 +1,18 @@
 """
-AI 工具层
-按领域拆分的工具函数，供各 Agent 调用
+工具导出
 """
-from .parser_tools import extract_quantity, extract_preferences, extract_dish_names
-from .menu_tools import (
-    get_all_menu_items,
-    search_dishes_by_name,
-    get_dish_detail,
-    search_by_preference,
-    get_signature_dishes,
-    check_stock,
-    get_full_menu_text,
-    get_menu_summary,
-    format_dish_list,
-    format_dish_detail,
-)
-from .order_tools import (
-    get_user_orders,
-    get_order_detail,
-    get_latest_order,
-    merge_cart,
-    get_cart_summary,
-    validate_cart_stock,
-    submit_order,
-    format_order_list,
-    format_order_detail,
-)
-from .system_tools import get_system_info, detect_info_intent, STORE_INFO
+from app.ai.tools.menu_tools import get_menu, search_dishes, get_dish_info, check_stock, get_recommended_dishes
+from app.ai.tools.cart_tools import add_to_cart, update_cart_quantity, remove_from_cart, view_cart, clear_cart
+from app.ai.tools.order_tools import confirm_order, get_my_orders, get_order_detail, cancel_order
+from app.ai.tools.store_tools import get_store_info, get_business_hours, get_membership_info
+from app.ai.tools.common_tools import rag_search, get_user_profile, greet_user
 
-__all__ = [
-    # parser_tools
-    "extract_quantity",
-    "extract_preferences",
-    "extract_dish_names",
-    # menu_tools
-    "get_all_menu_items",
-    "search_dishes_by_name",
-    "get_dish_detail",
-    "search_by_preference",
-    "get_signature_dishes",
-    "check_stock",
-    "get_full_menu_text",
-    "get_menu_summary",
-    "format_dish_list",
-    "format_dish_detail",
-    # order_tools
-    "get_user_orders",
-    "get_order_detail",
-    "get_latest_order",
-    "merge_cart",
-    "get_cart_summary",
-    "validate_cart_stock",
-    "submit_order",
-    "format_order_list",
-    "format_order_detail",
-    # system_tools
-    "get_system_info",
-    "detect_info_intent",
-    "STORE_INFO",
-]
+# 按领域分组的工具
+MENU_TOOLS = [get_menu, search_dishes, get_dish_info, check_stock, get_recommended_dishes]
+CART_TOOLS = [add_to_cart, update_cart_quantity, remove_from_cart, view_cart, clear_cart]
+ORDER_TOOLS = [confirm_order, get_my_orders, get_order_detail, cancel_order]
+STORE_TOOLS = [get_store_info, get_business_hours, get_membership_info]
+COMMON_TOOLS = [rag_search, get_user_profile, greet_user]
+
+# 所有工具
+ALL_TOOLS = MENU_TOOLS + CART_TOOLS + ORDER_TOOLS + STORE_TOOLS + COMMON_TOOLS

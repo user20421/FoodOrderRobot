@@ -81,14 +81,14 @@ async function confirmOrder() {
     const res = await api.post('/chat', {
       user_id: authStore.userId,
       message: '确认下单',
-      cart: cartStore.items,
+      cart: JSON.parse(JSON.stringify(cartStore.items || [])),
     })
     const data = res.data
     if (data.cart) {
       cartStore.setCart(data.cart)
     }
     // 根据返回的 cart 是否为空判断下单是否成功
-    if (data.cart && data.cart.length === 0) {
+    if (data.cart && Array.isArray(data.cart) && data.cart.length === 0) {
       ElMessage.success('下单成功！')
       router.push('/orders')
     } else {

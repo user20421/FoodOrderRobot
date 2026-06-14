@@ -32,13 +32,25 @@
             <el-icon><List /></el-icon>
             <span>我的订单</span>
           </el-menu-item>
+          <el-menu-item index="/order-status">
+            <el-icon><Timer /></el-icon>
+            <span>订单状态</span>
+          </el-menu-item>
         </template>
 
         <!-- 商家端菜单 -->
         <template v-if="isAdmin">
+          <el-menu-item index="/admin/dashboard">
+            <el-icon><Histogram /></el-icon>
+            <span>概览</span>
+          </el-menu-item>
           <el-menu-item index="/admin/menu">
             <el-icon><Dish /></el-icon>
             <span>商品管理</span>
+          </el-menu-item>
+          <el-menu-item index="/admin/pending-orders">
+            <el-icon><Bell /></el-icon>
+            <span>待处理订单</span>
           </el-menu-item>
           <el-menu-item index="/admin/orders">
             <el-icon><List /></el-icon>
@@ -68,7 +80,7 @@
   <router-view v-else />
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from './stores/auth'
@@ -86,12 +98,15 @@ const isAdmin = computed(() => authStore.isAdmin)
 const isCustomer = computed(() => authStore.isCustomer)
 
 const pageTitle = computed(() => {
-  const titles = {
+  const titles: Record<string, string> = {
     '/chat': '智能点餐助手',
     '/menu': '本店菜单',
     '/cart': '购物车',
     '/orders': '我的订单',
+    '/order-status': '订单状态',
+    '/admin/dashboard': '商家概览',
     '/admin/menu': '商品管理',
+    '/admin/pending-orders': '待处理订单',
     '/admin/orders': '订单管理',
   }
   return titles[route.path] || '点餐机器人'

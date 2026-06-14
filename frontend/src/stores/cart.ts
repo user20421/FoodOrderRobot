@@ -4,8 +4,9 @@
  */
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
+import type { CartItem } from '../types'
 
-function getCartStorageKey() {
+function getCartStorageKey(): string {
   try {
     const authRaw = localStorage.getItem('ordering_bot_auth')
     if (authRaw) {
@@ -18,13 +19,13 @@ function getCartStorageKey() {
   return 'ordering_bot_cart_guest'
 }
 
-function loadCart() {
+function loadCart(): CartItem[] {
   const key = getCartStorageKey()
   try {
     const raw = localStorage.getItem(key)
     if (raw) {
       const parsed = JSON.parse(raw)
-      if (Array.isArray(parsed)) return parsed
+      if (Array.isArray(parsed)) return parsed as CartItem[]
     }
   } catch (e) {
     console.error('加载购物车失败', e)
@@ -33,7 +34,7 @@ function loadCart() {
 }
 
 export const useCartStore = defineStore('cart', () => {
-  const items = ref(loadCart())
+  const items = ref<CartItem[]>(loadCart())
 
   const totalCount = computed(() =>
     items.value.reduce((sum, item) => sum + item.quantity, 0)
@@ -47,12 +48,12 @@ export const useCartStore = defineStore('cart', () => {
     items.value = loadCart()
   }
 
-  function setCart(newItems) {
+  function setCart(newItems: CartItem[]) {
     items.value = newItems || []
     save()
   }
 
-  function updateQuantity(menuItemId, quantity) {
+  function updateQuantity(menuItemId: number, quantity: number) {
     const item = items.value.find((i) => i.menu_item_id === menuItemId)
     if (item) {
       item.quantity = quantity
@@ -60,7 +61,7 @@ export const useCartStore = defineStore('cart', () => {
     }
   }
 
-  function removeItem(menuItemId) {
+  function removeItem(menuItemId: number) {
     items.value = items.value.filter((i) => i.menu_item_id !== menuItemId)
     save()
   }
@@ -86,7 +87,7 @@ export const useCartStore = defineStore('cart', () => {
  * 清空所有用户的购物车数据（用于项目重新运行时）
  */
 export function clearAllCartStorage() {
-  const keysToRemove = []
+  const keysToRemove: string[] = []
   for (let i = 0; i < localStorage.length; i++) {
     const key = localStorage.key(i)
     if (key && key.startsWith('ordering_bot_cart_')) {

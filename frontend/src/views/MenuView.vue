@@ -58,16 +58,17 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import api from '../api'
 import { useCartStore } from '../stores/cart'
+import type { MenuItem, CartItem } from '../types'
 
-const items = ref([])
+const items = ref<MenuItem[]>([])
 const search = ref('')
 const filterCategory = ref('')
-const loadingId = ref(null)
+const loadingId = ref<number | null>(null)
 const cartStore = useCartStore()
 
 const filteredItems = computed(() => {
@@ -78,23 +79,23 @@ const filteredItems = computed(() => {
   })
 })
 
-function spicyType(level) {
+function spicyType(level: number): 'info' | 'warning' | 'danger' {
   if (level === 0) return 'info'
   if (level <= 2) return 'warning'
   return 'danger'
 }
 
-function spicyText(level) {
+function spicyText(level: number): string {
   if (level === 0) return '不辣'
   return '辣'.repeat(level)
 }
 
-function addToCart(item) {
+function addToCart(item: MenuItem) {
   loadingId.value = item.id
 
   // 本地直接操作购物车，不经过 LLM，更可靠
   const existing = cartStore.items.find((i) => i.menu_item_id === item.id)
-  let newItems
+  let newItems: CartItem[]
   if (existing) {
     newItems = cartStore.items.map((i) =>
       i.menu_item_id === item.id
@@ -120,7 +121,7 @@ function addToCart(item) {
 
 onMounted(async () => {
   try {
-    const res = await api.get('/menu')
+    const res = await api.get<MenuItem[]>('/menu')
     items.value = res.data
   } catch (e) {
     ElMessage.error('获取菜单失败')

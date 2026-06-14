@@ -55,21 +55,27 @@ class MenuItemRepository(BaseRepository[MenuItem]):
         )
         return result.scalars().all()
 
-    async def update_stock(self, db: AsyncSession, item_id: int, delta: int):
-        await db.execute(
+    async def update_stock(self, db: AsyncSession, item_id: int, delta: int) -> int:
+        """
+        原子更新库存。delta 为负数时表示扣减。
+        返回受影响的行数；若返回 0，说明库存不足或菜品不存在。
+        """
+        result = await db.execute(
             update(MenuItem)
             .where(MenuItem.id == item_id)
+            .where(MenuItem.stock + delta >= 0)
             .values(stock=MenuItem.stock + delta)
         )
-        await db.commit()
+        return result.rowcount
 
-    async def increment_sales(self, db: AsyncSession, item_id: int, quantity: int):
-        await db.execute(
+    async def increment_sales(self, db: AsyncSession, item_id: int, quantity: int) -> int:
+        """增加销量，返回受影响的行数"""
+        result = await db.execute(
             update(MenuItem)
             .where(MenuItem.id == item_id)
             .values(sales_count=MenuItem.sales_count + quantity)
         )
-        await db.commit()
+        return result.rowcount
 
 
 menu_category_repo = MenuCategoryRepository()

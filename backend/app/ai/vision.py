@@ -36,6 +36,13 @@ async def analyze_dish_image(image_bytes: bytes, mime_type: str = "image/jpeg") 
         ]
 
         model = settings.vision_model
+        # qwen3-omni-flash-realtime 是 WebSocket 实时模型，不适合单次 HTTP 调用。
+        # 如果配置为 realtime 变体，自动 fallback 到同系列非 realtime 版本以保证单次图片分析可用。
+        if model.endswith("-realtime"):
+            fallback_model = model.replace("-realtime", "")
+            logger.warning(f"[Vision] 模型 {model} 为实时模型，单次图片分析将使用非实时版本: {fallback_model}")
+            model = fallback_model or "qwen3-omni-flash"
+
         logger.info(f"[Vision] 调用多模态模型: {model}")
 
         # MultiModalConversation.call 是同步阻塞的，用线程池包装

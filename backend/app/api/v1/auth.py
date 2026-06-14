@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
 from app.core.exceptions import AuthenticationException, BusinessException
 from app.schemas.auth import UserRegister, UserLogin, UserOut, AuthResponse
-from app.services.auth_service import register_user, login_user
+from app.services.auth_service import register_user, login_user, create_access_token
 
 router = APIRouter()
 
@@ -28,6 +28,7 @@ async def login(data: UserLogin, db: AsyncSession = Depends(get_db)):
     """用户登录"""
     try:
         result = await login_user(db, data)
-        return AuthResponse(user=result, message="登录成功")
+        token = create_access_token(result.id, result.role)
+        return AuthResponse(user=result, message="登录成功", token=token)
     except AuthenticationException as e:
         raise HTTPException(status_code=e.status_code, detail=e.message)

@@ -31,7 +31,11 @@
           :class="msg.role === 'user' ? 'user-avatar' : 'bot-avatar'"
         />
         <div class="message-bubble">
+          <div v-if="msg.imageUrl" class="message-image">
+            <el-image :src="msg.imageUrl" fit="cover" class="message-image-thumb" :preview-src-list="[msg.imageUrl]" />
+          </div>
           <div
+            v-if="msg.content && msg.content !== '[图片]'"
             class="message-text"
             v-html="msg.role === 'assistant' ? renderMarkdown(msg.content) : formatText(msg.content)"
             @click="handleLinkClick"
@@ -52,6 +56,10 @@
       <el-button size="small" @click="sendQuick('有什么推荐的菜品？')">推荐菜品</el-button>
       <el-button size="small" @click="sendQuick('查看菜单')">查看菜单</el-button>
       <el-button size="small" @click="sendQuick('查询我的订单')">查询订单</el-button>
+      <el-button size="small" type="success" @click="triggerImageUpload">
+        <el-icon><Camera /></el-icon>
+        图片搜菜
+      </el-button>
       <el-button size="small" type="primary" @click="confirmOrder" :disabled="cartStore.totalCount === 0">
         确认下单 ({{ cartStore.totalCount }})
       </el-button>
@@ -59,13 +67,28 @@
         <el-icon><Delete /></el-icon>
         清空对话
       </el-button>
+      <input
+        ref="imageInput"
+        type="file"
+        accept="image/jpeg,image/png,image/webp,image/gif"
+        style="display: none"
+        @change="handleImageChange"
+      />
     </div>
 
     <!-- 输入区域 -->
     <div class="chat-input-area">
+      <!-- 图片预览 -->
+      <div v-if="imagePreviewUrl" class="image-preview-bar">
+        <el-image :src="imagePreviewUrl" fit="cover" class="preview-thumb" />
+        <el-button link size="small" @click="clearImage">
+          <el-icon><Close /></el-icon>
+        </el-button>
+      </div>
+
       <el-input
         v-model="inputMessage"
-        placeholder="告诉我你想吃什么，例如：来一份宫保鸡丁"
+        :placeholder="imagePreviewUrl ? '可以补充描述，或直接发送图片' : '告诉我你想吃什么，例如：来一份宫保鸡丁'"
         @keyup.enter="sendMessage"
         size="large"
       >
@@ -106,11 +129,11 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { ref, nextTick, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Microphone, Mute } from '@element-plus/icons-vue'
+import { Microphone, Mute, Camera, Close } from '@element-plus/icons-vue'
 import { marked } from 'marked'
 import { storeToRefs } from 'pinia'
 import api from '../api'
@@ -118,6 +141,10 @@ import { useCartStore } from '../stores/cart'
 import { useChatStore } from '../stores/chat'
 import { useAuthStore } from '../stores/auth'
 import DigitalAvatar from '../components/DigitalAvatar.vue'
+import { sanitizeHtml, sanitizeTextHtml } from '@/utils/sanitize'
+import type { ChatRequest, ChatResponse, CartItem } from '../types'
+
+type AvatarStatus = 'idle' | 'listening' | 'thinking' | 'speaking'
 
 const route = useRoute()
 const router = useRouter()
@@ -127,43 +154,49 @@ const { messages } = storeToRefs(chatStore)
 const inputMessage = ref('')
 const loading = ref(false)
 const cartVisible = ref(false)
-const messageBox = ref(null)
+const messageBox = ref<HTMLElement | null>(null)
 const cartStore = useCartStore()
-const avatarStatus = ref('idle')
-const recognition = ref(null)
+const avatarStatus = ref<AvatarStatus>('idle')
 const speechEnabled = ref(localStorage.getItem('ordering_bot_speech') !== 'false')
+
+// 拍照搜菜状态
+const imageInput = ref<HTMLInputElement | null>(null)
+const imageBase64 = ref<string>('')
+const imagePreviewUrl = ref<string>('')
 
 watch(speechEnabled, (val) => {
   localStorage.setItem('ordering_bot_speech', val ? 'true' : 'false')
 })
 
 // Markdown 渲染缓存，避免重复解析
-const markdownCache = new Map()
+const markdownCache = new Map<string, string>()
 
 onMounted(async () => {
   await scrollToBottom()
   const preset = route.query.preset
   if (preset) {
-    inputMessage.value = preset
+    inputMessage.value = String(preset)
     await sendMessage()
   }
 })
 
-function formatText(text) {
-  return text.replace(/\n/g, '<br>')
+function formatText(text: string) {
+  const html = text.replace(/\n/g, '<br>')
+  return sanitizeTextHtml(html)
 }
 
-function renderMarkdown(text) {
+function renderMarkdown(text: string) {
   if (markdownCache.has(text)) {
-    return markdownCache.get(text)
+    return markdownCache.get(text)!
   }
-  const html = marked.parse(text, { breaks: true, gfm: true })
+  const rawHtml = marked.parse(text, { breaks: true, gfm: true }) as string
+  const html = sanitizeHtml(rawHtml)
   markdownCache.set(text, html)
   return html
 }
 
-function handleLinkClick(event) {
-  const anchor = event.target.closest('a')
+function handleLinkClick(event: MouseEvent) {
+  const anchor = (event.target as HTMLElement).closest('a')
   if (anchor) {
     const href = anchor.getAttribute('href')
     if (href && href.startsWith('/') && !href.startsWith('//')) {
@@ -180,35 +213,89 @@ async function scrollToBottom() {
   }
 }
 
-async function sendQuick(text) {
+async function sendQuick(text: string) {
   inputMessage.value = text
   await sendMessage()
 }
 
+function triggerImageUpload() {
+  imageInput.value?.click()
+}
+
+function handleImageChange(event: Event) {
+  const target = event.target as HTMLInputElement
+  const file = target.files?.[0]
+  if (!file) return
+
+  // 限制 5MB
+  if (file.size > 5 * 1024 * 1024) {
+    ElMessage.error('图片大小不能超过5MB')
+    target.value = ''
+    return
+  }
+
+  const reader = new FileReader()
+  reader.onload = () => {
+    const result = reader.result as string
+    imageBase64.value = result
+    imagePreviewUrl.value = result
+    // 选择图片后自动发送识别
+    sendMessage()
+  }
+  reader.onerror = () => {
+    ElMessage.error('图片读取失败')
+  }
+  reader.readAsDataURL(file)
+
+  // 重置 input，允许再次选择同一张图片
+  target.value = ''
+}
+
+function clearImage() {
+  imageBase64.value = ''
+  imagePreviewUrl.value = ''
+}
+
 async function sendMessage() {
   const text = inputMessage.value.trim()
-  if (!text) return
+  const hasImage = !!imageBase64.value
+
+  if (!text && !hasImage) return
 
   // 停止语音播报和录音
   if (window.speechSynthesis) window.speechSynthesis.cancel()
-  if (recognition.value) {
-    try { recognition.value.stop() } catch (_) {}
-  }
 
-  chatStore.addMessage({ role: 'user', content: text })
+  // 构建用户消息：如果有图片则显示图片
+  const userMessage: { role: 'user'; content: string; imageUrl?: string } = {
+    role: 'user',
+    content: text || '[图片]',
+  }
+  if (hasImage) {
+    userMessage.imageUrl = imagePreviewUrl.value
+  }
+  chatStore.addMessage(userMessage)
+
+  // 清空输入
   inputMessage.value = ''
+  const currentImageBase64 = imageBase64.value
+  clearImage()
+
   loading.value = true
   avatarStatus.value = 'thinking'
   await scrollToBottom()
 
   try {
     // 深拷贝购物车，避免传递 Vue Proxy 对象给 axios
-    const currentCart = JSON.parse(JSON.stringify(cartStore.items || []))
-    const res = await api.post('/chat', {
+    const currentCart: CartItem[] = JSON.parse(JSON.stringify(cartStore.items || []))
+    const payload: ChatRequest = {
       user_id: authStore.userId,
       message: text,
       cart: currentCart,
-    })
+    }
+    if (currentImageBase64) {
+      payload.image_base64 = currentImageBase64
+    }
+    const res = await api.post<ChatResponse>('/chat', payload)
     const data = res.data
     // 构建购物车摘要，作为对话内容的一部分展示给用户
     let responseText = data.response || ''
@@ -241,7 +328,7 @@ async function sendMessage() {
   }
 }
 
-function speakText(text) {
+function speakText(text: string) {
   if (!speechEnabled.value || !window.speechSynthesis) return
   const utter = new SpeechSynthesisUtterance(text)
   utter.lang = 'zh-CN'
@@ -425,6 +512,31 @@ async function handleClearChat() {
 
 .chat-input-area {
   padding: 0 4px;
+}
+
+.image-preview-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.preview-thumb {
+  width: 64px;
+  height: 64px;
+  border-radius: 8px;
+  border: 1px solid #dcdfe6;
+}
+
+.message-image {
+  margin-bottom: 8px;
+}
+
+.message-image-thumb {
+  width: 120px;
+  height: 120px;
+  border-radius: 8px;
+  cursor: pointer;
 }
 
 .cart-fab {

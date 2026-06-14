@@ -36,7 +36,7 @@
 | 前端 | Vue 3 + Vite + Element Plus + Pinia + Vue Router |
 | 后端 | FastAPI + SQLAlchemy 2.0 (async) + Pydantic v2 |
 | AI框架 | LangGraph + LangChain + Tool Calling |
-| 大模型 | 阿里云 DashScope (qwen-plus) |
+| 大模型 | 阿里云 DashScope (qwen-max) |
 | 向量库 | Chroma + DashScope Embeddings |
 | 数据库 | MySQL (结构化) + MongoDB (半结构化) + Chroma (向量) |
 | 检索 | BM25 + Dense Retrieval + RRF Fusion |
@@ -186,8 +186,8 @@ python start.py --prod
 DASHSCOPE_API_KEY=your-api-key
 
 # 可选
-CHAT_MODEL=qwen-plus          # 对话模型
-EMBEDDING_MODEL=text-embedding-v2  # 嵌入模型
+CHAT_MODEL=qwen-max          # 对话模型
+EMBEDDING_MODEL=text-embedding-v4  # 嵌入模型
 DATABASE_URL=mysql+aiomysql://root:123456@localhost:3306/shuxiangge_bot
 MONGODB_URL=mongodb://localhost:27017/shuxiangge_bot
 ```

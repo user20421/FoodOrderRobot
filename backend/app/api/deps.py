@@ -1,47 +1,92 @@
 """
 API 依赖注入
 """
-from fastapi import Request, HTTPException, status
+import jwt
+from fastapi import Request, HTTPException, status, Depends
+from fastapi.security import OAuth2PasswordBearer
 from typing import Optional
 
+from app.core.config import settings
 from app.core.database import get_db
 from app.core.exceptions import AuthorizationException
 
 
-async def get_current_user(request: Request) -> dict:
-    """从请求头获取当前用户"""
+# OAuth2 密码 Bearer 方案（tokenUrl 为登录接口）
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login", auto_error=False)
+
+
+def _decode_token(token: str) -> dict:
+    """解码并校验 JWT"""
+    try:
+        payload = jwt.decode(token, settings.jwt_secret_key, algorithms=[settings.jwt_algorithm])
+        user_id = payload.get("sub")
+        role = payload.get("role", "customer")
+        if user_id is None:
+            raise AuthorizationException("无效的认证令牌")
+        return {"id": int(user_id), "role": role}
+    except jwt.ExpiredSignatureError:
+        raise AuthorizationException("登录已过期，请重新登录")
+    except jwt.InvalidTokenError as e:
+        raise AuthorizationException(f"无效的认证令牌: {e}")
+
+
+async def get_current_user(
+    request: Request,
+    token: Optional[str] = Depends(oauth2_scheme),
+) -> dict:
+    """
+    获取当前登录用户。
+    优先从 Authorization: Bearer <token> 头解析；若未提供，则兼容旧的 X-User-ID/X-User-Role 头。
+    """
+    # 1. 优先 JWT
+    if token:
+        return _decode_token(token)
+
+    # 2. 兼容旧的请求头（方便测试和前端未完全迁移时过渡）
     user_id = request.headers.get("X-User-ID")
     user_role = request.headers.get("X-User-Role", "customer")
+    if user_id:
+        try:
+            return {"id": int(user_id), "role": user_role}
+        except ValueError:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="无效的用户ID",
+            )
 
-    if not user_id:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="未登录或登录已过期",
-        )
-
-    try:
-        user_id = int(user_id)
-    except ValueError:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="无效的用户ID",
-        )
-
-    return {"id": user_id, "role": user_role}
+    raise HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="未登录或登录已过期",
+    )
 
 
-async def require_admin(current_user: dict = None) -> dict:
+async def require_admin(current_user: dict = Depends(get_current_user)) -> dict:
     """要求管理员权限"""
-    # 从request中获取
-    pass
-
-
-def check_admin(request: Request):
-    """检查是否为管理员"""
-    user_role = request.headers.get("X-User-Role", "")
-    if user_role != "admin":
+    if current_user.get("role") != "admin":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="权限不足，需要管理员权限",
         )
-    return True
+    return current_user
+
+
+def check_admin(request: Request):
+    """检查是否为管理员（兼容旧版普通函数调用，逐步迁移到 require_admin）"""
+    token = request.headers.get("Authorization", "")
+    if token.startswith("Bearer "):
+        try:
+            payload = _decode_token(token[7:])
+            if payload.get("role") == "admin":
+                return True
+        except Exception:
+            pass
+
+    # 兼容旧请求头
+    user_role = request.headers.get("X-User-Role", "")
+    if user_role == "admin":
+        return True
+
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail="权限不足，需要管理员权限",
+    )

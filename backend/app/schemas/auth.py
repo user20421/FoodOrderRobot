@@ -26,6 +26,11 @@ class UserOut(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class Token(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+
+
 class AuthResponse(BaseModel):
     user: UserOut
     message: str

@@ -8,6 +8,9 @@ import sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import httpx
+import pytest
+
+pytestmark = pytest.mark.asyncio
 
 BASE_URL = "http://127.0.0.1:8000"
 API = f"{BASE_URL}/api/v1"

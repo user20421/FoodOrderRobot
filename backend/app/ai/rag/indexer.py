@@ -101,25 +101,28 @@ class RAGIndexer:
             return
 
         try:
+            # 小批量导入，避免单次 Embedding 请求过大被服务端拒绝
+            batch_size = 16
+
             # 菜单索引
             menu_docs = _build_menu_documents()
             if force_rebuild:
                 chroma_store.delete_collection(self.COLLECTIONS["menu"])
-            chroma_store.create_collection(self.COLLECTIONS["menu"], menu_docs)
+            self._create_collection_batched(self.COLLECTIONS["menu"], menu_docs, batch_size)
             logger.info(f"[RAG] 菜单索引完成: {len(menu_docs)} 条")
 
             # FAQ索引
             faq_docs = _build_faq_documents()
             if force_rebuild:
                 chroma_store.delete_collection(self.COLLECTIONS["faq"])
-            chroma_store.create_collection(self.COLLECTIONS["faq"], faq_docs)
+            self._create_collection_batched(self.COLLECTIONS["faq"], faq_docs, batch_size)
             logger.info(f"[RAG] FAQ索引完成: {len(faq_docs)} 条")
 
             # 店铺文档索引
             store_docs = _build_store_documents()
             if force_rebuild:
                 chroma_store.delete_collection(self.COLLECTIONS["store"])
-            chroma_store.create_collection(self.COLLECTIONS["store"], store_docs)
+            self._create_collection_batched(self.COLLECTIONS["store"], store_docs, batch_size)
             logger.info(f"[RAG] 店铺文档索引完成: {len(store_docs)} 条")
 
             self._initialized = True
@@ -128,6 +131,26 @@ class RAGIndexer:
         except Exception as e:
             logger.error(f"[RAG] 索引初始化失败: {e}")
             raise
+
+    def _create_collection_batched(self, name: str, documents: List[Document], batch_size: int = 16):
+        """分批创建集合并导入文档"""
+        if not documents:
+            chroma_store.create_collection(name)
+            return
+
+        # 先创建集合并导入第一批
+        first_batch = documents[:batch_size]
+        collection = chroma_store.create_collection(name, first_batch)
+
+        # 后续分批添加
+        for i in range(batch_size, len(documents), batch_size):
+            batch = documents[i:i + batch_size]
+            try:
+                collection.add_documents(batch)
+            except Exception as e:
+                logger.warning(f"[RAG] {name} 第 {i // batch_size + 1} 批导入失败: {e}")
+                # 继续处理后续批次，不要中断整个索引流程
+                continue
 
 
 # 全局索引器

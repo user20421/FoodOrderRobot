@@ -4,8 +4,15 @@
  */
 import { ref } from 'vue'
 import { defineStore } from 'pinia'
+import type { ChatMessage } from '../types'
 
-function getStorageKey() {
+const WELCOME_MESSAGE: ChatMessage = {
+  role: 'assistant',
+  content:
+    '您好！我是智能点餐机器人小餐\n您可以问我：\n• 有什么好吃的推荐？\n• 来一份宫保鸡丁\n• 查询我的订单\n• 或直接打开菜单浏览菜品',
+}
+
+function getStorageKey(): string {
   try {
     const authRaw = localStorage.getItem('ordering_bot_auth')
     if (authRaw) {
@@ -18,53 +25,41 @@ function getStorageKey() {
   return 'ordering_bot_chat_messages_guest'
 }
 
-function loadMessages() {
+function loadMessages(): ChatMessage[] {
   const key = getStorageKey()
   try {
     const raw = localStorage.getItem(key)
     if (raw) {
       const parsed = JSON.parse(raw)
       if (Array.isArray(parsed) && parsed.length > 0) {
-        return parsed
+        return parsed as ChatMessage[]
       }
     }
   } catch (e) {
     console.error('加载聊天记录失败', e)
   }
-  return [
-    {
-      role: 'assistant',
-      content:
-        '您好！我是智能点餐机器人小餐\n您可以问我：\n• 有什么好吃的推荐？\n• 来一份宫保鸡丁\n• 查询我的订单\n• 或直接打开菜单浏览菜品',
-    },
-  ]
+  return [WELCOME_MESSAGE]
 }
 
 export const useChatStore = defineStore('chat', () => {
-  const messages = ref(loadMessages())
+  const messages = ref<ChatMessage[]>(loadMessages())
 
   function reloadMessages() {
     messages.value = loadMessages()
   }
 
-  function addMessage(msg) {
+  function addMessage(msg: ChatMessage) {
     messages.value.push(msg)
     save()
   }
 
-  function setMessages(msgs) {
+  function setMessages(msgs: ChatMessage[]) {
     messages.value = msgs
     save()
   }
 
   function clearMessages() {
-    messages.value = [
-      {
-        role: 'assistant',
-        content:
-          '您好！我是智能点餐机器人小餐\n您可以问我：\n• 有什么好吃的推荐？\n• 来一份宫保鸡丁\n• 查询我的订单\n• 或直接打开菜单浏览菜品',
-      },
-    ]
+    messages.value = [WELCOME_MESSAGE]
     save()
   }
 
@@ -83,7 +78,7 @@ export const useChatStore = defineStore('chat', () => {
  * 清空所有用户的聊天记录（用于项目重新运行时）
  */
 export function clearAllChatStorage() {
-  const keysToRemove = []
+  const keysToRemove: string[] = []
   for (let i = 0; i < localStorage.length; i++) {
     const key = localStorage.key(i)
     if (key && key.startsWith('ordering_bot_chat_messages_')) {

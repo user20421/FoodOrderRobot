@@ -1,14 +1,16 @@
 """
 摘要记忆
-长对话的滚动摘要，存储在MongoDB中
+长对话的滚动摘要，存储在 MongoDB 中（使用 Beanie ODM）
 """
+from datetime import datetime, timezone
 from typing import Optional
 from langchain_core.messages import HumanMessage
 
 from app.ai.llm import get_llm
-from app.core.mongodb import get_mongodb_db, is_mongodb_available
+from app.core.mongodb import is_mongodb_available, is_beanie_initialized
 from app.core.logging_config import get_logger
 from app.core.config import settings
+from app.documents.summary import ConversationSummaryDocument
 
 logger = get_logger(__name__)
 
@@ -26,31 +28,39 @@ class SummaryMemory:
 
     async def save_summary(self, user_id: int, summary: str, session_id: str = "default"):
         """保存对话摘要"""
-        if not is_mongodb_available():
+        if not is_mongodb_available() or not is_beanie_initialized():
             return
         try:
-            db = get_mongodb_db()
-            await db.conversation_summaries.update_one(
-                {"user_id": user_id, "session_id": session_id},
-                {
-                    "$set": {"summary": summary, "updated_at": __import__('datetime').datetime.now(__import__('datetime').timezone.utc)},
-                    "$setOnInsert": {"user_id": user_id, "session_id": session_id, "created_at": __import__('datetime').datetime.now(__import__('datetime').timezone.utc)},
-                },
-                upsert=True,
+            doc = await ConversationSummaryDocument.find_one(
+                ConversationSummaryDocument.user_id == user_id,
+                ConversationSummaryDocument.session_id == session_id,
             )
+            now = datetime.now(timezone.utc)
+            if doc:
+                doc.summary = summary
+                doc.updated_at = now
+                await doc.save()
+            else:
+                await ConversationSummaryDocument(
+                    user_id=user_id,
+                    session_id=session_id,
+                    summary=summary,
+                    created_at=now,
+                    updated_at=now,
+                ).insert()
         except Exception as e:
             logger.warning(f"[SummaryMemory] 保存摘要失败: {e}")
 
     async def get_summary(self, user_id: int, session_id: str = "default") -> str:
         """获取对话摘要"""
-        if not is_mongodb_available():
+        if not is_mongodb_available() or not is_beanie_initialized():
             return ""
         try:
-            db = get_mongodb_db()
-            doc = await db.conversation_summaries.find_one(
-                {"user_id": user_id, "session_id": session_id}
+            doc = await ConversationSummaryDocument.find_one(
+                ConversationSummaryDocument.user_id == user_id,
+                ConversationSummaryDocument.session_id == session_id,
             )
-            return doc.get("summary", "") if doc else ""
+            return doc.summary if doc else ""
         except Exception as e:
             logger.warning(f"[SummaryMemory] 读取摘要失败: {e}")
             return ""

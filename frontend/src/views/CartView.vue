@@ -25,7 +25,7 @@
               :min="1"
               :max="999"
               size="small"
-              @update:model-value="(val) => cartStore.updateQuantity(scope.row.menu_item_id, val)"
+              @update:model-value="(val: number) => cartStore.updateQuantity(scope.row.menu_item_id, val)"
             />
           </template>
         </el-table-column>
@@ -49,13 +49,14 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useCartStore } from '../stores/cart'
 import { useAuthStore } from '../stores/auth'
 import api from '../api'
+import type { ChatResponse, CartItem } from '../types'
 
 const router = useRouter()
 const cartStore = useCartStore()
@@ -78,10 +79,11 @@ async function confirmOrder() {
   }
   ordering.value = true
   try {
-    const res = await api.post('/chat', {
+    const cart: CartItem[] = JSON.parse(JSON.stringify(cartStore.items || []))
+    const res = await api.post<ChatResponse>('/chat', {
       user_id: authStore.userId,
       message: '确认下单',
-      cart: JSON.parse(JSON.stringify(cartStore.items || [])),
+      cart,
     })
     const data = res.data
     if (data.cart) {

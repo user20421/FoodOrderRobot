@@ -123,19 +123,17 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { computed } from 'vue'
 
-const props = defineProps({
-  status: {
-    type: String,
-    default: 'idle',
-    validator: (v) => ['idle', 'listening', 'thinking', 'speaking'].includes(v)
-  }
-})
+type AvatarStatus = 'idle' | 'listening' | 'thinking' | 'speaking'
+
+const props = defineProps<{
+  status: AvatarStatus
+}>()
 
 const statusText = computed(() => {
-  const map = {
+  const map: Record<AvatarStatus, string> = {
     idle: '小餐',
     listening: '聆听中',
     thinking: '思考中',

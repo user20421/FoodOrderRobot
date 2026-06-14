@@ -52,14 +52,15 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import api from '../api'
 import { useAuthStore } from '../stores/auth'
 import { formatDate, statusType, statusText, downloadTxt } from '../utils'
+import type { Order } from '../types'
 
-const orders = ref([])
+const orders = ref<Order[]>([])
 const loading = ref(false)
 const exporting = ref(false)
 const authStore = useAuthStore()
@@ -67,7 +68,7 @@ const authStore = useAuthStore()
 async function loadOrders() {
   loading.value = true
   try {
-    const res = await api.get('/orders', { params: { user_id: authStore.userId } })
+    const res = await api.get<Order[]>('/orders', { params: { user_id: authStore.userId } })
     orders.value = res.data
   } catch (e) {
     ElMessage.error('获取订单失败')
@@ -77,9 +78,9 @@ async function loadOrders() {
   }
 }
 
-async function exportOrder(orderId) {
+async function exportOrder(orderId: number) {
   try {
-    const res = await api.get(`/orders/${orderId}/export`, { responseType: 'text' })
+    const res = await api.get<string>(`/orders/${orderId}/export`, { responseType: 'text' })
     downloadTxt(res.data, `order_${orderId}.txt`)
     ElMessage.success('订单导出成功')
   } catch (e) {
@@ -91,7 +92,7 @@ async function exportOrder(orderId) {
 async function exportAllOrders() {
   exporting.value = true
   try {
-    const res = await api.get('/orders/export', {
+    const res = await api.get<string>('/orders/export', {
       params: { user_id: authStore.userId },
       responseType: 'text',
     })

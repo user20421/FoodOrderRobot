@@ -24,7 +24,8 @@ class BaseRepository(Generic[ModelType]):
     async def create(self, db: AsyncSession, obj_in: dict) -> ModelType:
         db_obj = self.model(**obj_in)
         db.add(db_obj)
-        await db.commit()
+        # 注意：Repository 不再自行 commit，由 Service 层统一控制事务
+        await db.flush()
         await db.refresh(db_obj)
         return db_obj
 
@@ -32,12 +33,12 @@ class BaseRepository(Generic[ModelType]):
         await db.execute(
             update(self.model).where(self.model.id == id).values(**obj_in)
         )
-        await db.commit()
+        # 注意：Repository 不再自行 commit，由 Service 层统一控制事务
         return await self.get(db, id)
 
     async def delete(self, db: AsyncSession, id: int) -> bool:
         result = await db.execute(delete(self.model).where(self.model.id == id))
-        await db.commit()
+        # 注意：Repository 不再自行 commit，由 Service 层统一控制事务
         return result.rowcount > 0
 
     async def count(self, db: AsyncSession) -> int:

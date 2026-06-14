@@ -3,7 +3,7 @@ LLM 工厂
 统一管理大模型实例，避免重复初始化
 """
 import os
-from typing import Optional
+from typing import Optional, Dict
 
 from langchain_community.chat_models.tongyi import ChatTongyi
 from langchain_community.embeddings.dashscope import DashScopeEmbeddings
@@ -13,9 +13,8 @@ from app.core.logging_config import get_logger
 
 logger = get_logger(__name__)
 
-_llm_instance: Optional[ChatTongyi] = None
+_llm_instances: Dict[tuple, ChatTongyi] = {}
 _embedding_instance: Optional[DashScopeEmbeddings] = None
-_last_model: str = ""
 
 
 class _MockLLM:
@@ -27,26 +26,27 @@ class _MockLLM:
 
 
 def get_llm(temperature: float = 0.1):
-    """获取 LLM 实例"""
-    global _llm_instance, _last_model
-
-    # 如果模型配置变化，重置实例
-    if _llm_instance is not None and _last_model == settings.chat_model:
-        return _llm_instance
+    """
+    获取 LLM 实例。
+    按 (model, temperature) 组合缓存，避免不同温度需求复用同一实例。
+    """
+    global _llm_instances
 
     api_key = settings.dashscope_api_key or os.environ.get("DASHSCOPE_API_KEY", "")
     if not api_key:
         logger.warning("DASHSCOPE_API_KEY 未设置，AI 服务将不可用")
         return _MockLLM()
 
-    _llm_instance = ChatTongyi(
-        model=settings.chat_model,
-        dashscope_api_key=api_key,
-        temperature=temperature,
-    )
-    _last_model = settings.chat_model
-    logger.info(f"LLM 初始化完成: {settings.chat_model}")
-    return _llm_instance
+    cache_key = (settings.chat_model, temperature)
+    if cache_key not in _llm_instances:
+        _llm_instances[cache_key] = ChatTongyi(
+            model=settings.chat_model,
+            dashscope_api_key=api_key,
+            temperature=temperature,
+        )
+        logger.info(f"LLM 初始化完成: {settings.chat_model}, temperature={temperature}")
+
+    return _llm_instances[cache_key]
 
 
 def get_embedding() -> DashScopeEmbeddings:

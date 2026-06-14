@@ -2,6 +2,7 @@
 RAG 引擎门面
 整合 Query Rewriting → Multi-Query → Hybrid Retrieval → RRF → Rerank → Compression
 """
+import os
 from typing import List, Dict, Any, Optional
 from langchain_core.messages import HumanMessage
 
@@ -12,6 +13,10 @@ from app.core.config import settings
 from app.core.logging_config import get_logger
 
 logger = get_logger(__name__)
+
+# 是否启用会额外调用 LLM 的高级 RAG 功能（查询扩展 / 重排序）
+# 当 DashScope 网络不稳定或响应慢时，可设置 RAG_LITE=true 关闭高级功能以提升稳定性
+RAG_LITE = os.environ.get("RAG_LITE", "false").lower() == "true"
 
 
 class RAGEngine:
@@ -34,14 +39,17 @@ class RAGEngine:
         k = k or settings.rag_top_k
 
         try:
-            # 1. Query Rewriting（查询重写）
-            rewritten = await self._rewrite_query(question, history)
-            if rewritten != question:
-                logger.info(f"[RAG] Query重写: '{question}' -> '{rewritten}'")
+            # 1. Query Rewriting（查询重写）- 轻量模式跳过
+            if RAG_LITE:
+                rewritten = question
+            else:
+                rewritten = await self._rewrite_query(question, history)
+                if rewritten != question:
+                    logger.info(f"[RAG] Query重写: '{question}' -> '{rewritten}'")
 
-            # 2. Multi-Query Expansion（多查询扩展）
+            # 2. Multi-Query Expansion（多查询扩展）- 轻量模式跳过
             queries = [rewritten]
-            if use_multi_query:
+            if not RAG_LITE and use_multi_query:
                 expanded = await self._expand_queries(rewritten)
                 queries.extend(expanded)
 
@@ -64,11 +72,11 @@ class RAGEngine:
             if not unique_results:
                 return "未找到相关信息。"
 
-            # 4. Rerank（重排序）
-            if use_rerank and len(unique_results) > k:
-                final_docs = await llm_reranker.rerank(rewritten, unique_results, top_n=k)
-            else:
+            # 4. Rerank（重排序）- 轻量模式跳过
+            if RAG_LITE or not use_rerank or len(unique_results) <= k:
                 final_docs = [d for d, _ in unique_results[:k]]
+            else:
+                final_docs = await llm_reranker.rerank(rewritten, unique_results, top_n=k)
 
             # 5. Context Compression（上下文压缩）
             context = await context_compressor.compress(rewritten, final_docs)

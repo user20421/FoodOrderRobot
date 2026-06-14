@@ -64,6 +64,9 @@
         <el-form-item label="标签">
           <el-input v-model="form.tags" placeholder="用逗号分隔，如：辣,下饭,经典" />
         </el-form-item>
+        <el-form-item label="是否推荐">
+          <el-switch v-model="form.is_recommended" active-text="推荐" inactive-text="普通" />
+        </el-form-item>
       </el-form>
       <template #footer>
         <el-button @click="dialogVisible = false">取消</el-button>
@@ -73,31 +76,55 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import api from '../../api'
+import api from '@/api'
+import type { MenuItem } from '@/types'
 
-const items = ref([])
+interface MenuForm {
+  name: string
+  category: string
+  price: number
+  stock: number
+  spicy_level: number
+  is_recommended: boolean
+  description: string
+  tags: string
+}
+
+const items = ref<MenuItem[]>([])
 const loading = ref(false)
 const dialogVisible = ref(false)
 const saveLoading = ref(false)
 const isEdit = ref(false)
-const form = ref({
+const form = ref<MenuForm>({
   name: '',
   category: '热菜',
   price: 0,
   stock: 100,
   spicy_level: 0,
+  is_recommended: false,
   description: '',
   tags: '',
 })
-const editingId = ref(null)
+const editingId = ref<number | null>(null)
+
+const defaultForm: MenuForm = {
+  name: '',
+  category: '热菜',
+  price: 0,
+  stock: 100,
+  spicy_level: 0,
+  is_recommended: false,
+  description: '',
+  tags: '',
+}
 
 async function loadItems() {
   loading.value = true
   try {
-    const res = await api.get('/admin/menu')
+    const res = await api.get<MenuItem[]>('/admin/menu')
     items.value = res.data
   } catch (e) {
     ElMessage.error('获取商品失败')
@@ -109,22 +136,23 @@ async function loadItems() {
 function openAdd() {
   isEdit.value = false
   editingId.value = null
-  form.value = {
-    name: '',
-    category: '热菜',
-    price: 0,
-    stock: 100,
-    spicy_level: 0,
-    description: '',
-    tags: '',
-  }
+  form.value = { ...defaultForm }
   dialogVisible.value = true
 }
 
-function openEdit(row) {
+function openEdit(row: MenuItem) {
   isEdit.value = true
   editingId.value = row.id
-  form.value = { ...row }
+  form.value = {
+    name: row.name,
+    category: row.category,
+    price: row.price,
+    stock: row.stock,
+    spicy_level: row.spicy_level,
+    is_recommended: !!row.is_recommended,
+    description: row.description || '',
+    tags: row.tags || '',
+  }
   dialogVisible.value = true
 }
 
@@ -135,11 +163,15 @@ async function handleSave() {
   }
   saveLoading.value = true
   try {
-    if (isEdit.value) {
-      await api.put(`/admin/menu/${editingId.value}`, form.value)
+    const payload = {
+      ...form.value,
+      is_recommended: form.value.is_recommended ? 1 : 0,
+    }
+    if (isEdit.value && editingId.value) {
+      await api.put(`/admin/menu/${editingId.value}`, payload)
       ElMessage.success('修改成功')
     } else {
-      await api.post('/admin/menu', form.value)
+      await api.post('/admin/menu', payload)
       ElMessage.success('新增成功')
     }
     dialogVisible.value = false
@@ -151,7 +183,7 @@ async function handleSave() {
   }
 }
 
-async function handleDelete(id) {
+async function handleDelete(id: number) {
   try {
     await ElMessageBox.confirm('确定删除该商品吗？', '提示', { type: 'warning' })
     await api.delete(`/admin/menu/${id}`)

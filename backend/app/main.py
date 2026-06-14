@@ -7,15 +7,21 @@ for proxy_var in ["HTTP_PROXY", "HTTPS_PROXY", "http_proxy", "https_proxy"]:
     os.environ.pop(proxy_var, None)
 os.environ["NO_PROXY"] = "*"
 
+import asyncio
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse, JSONResponse
+
+from app.core.exceptions import AppException
 
 from app.core.database import init_db, AsyncSessionLocal
 from app.core.mongodb import init_mongodb, close_mongodb
-from app.core.logging_config import setup_logging
+from app.core.redis import init_redis, close_redis
+from app.core.logging_config import setup_logging, get_logger
 from app.core.chroma_client import chroma_store
 from app.ai.rag.indexer import rag_indexer
 from app.api.v1 import auth, menu, order, chat, admin, system, image_search
@@ -26,6 +32,7 @@ import app.models  # noqa: F401
 
 # 初始化日志
 setup_logging()
+logger = get_logger(__name__)
 
 
 @asynccontextmanager
@@ -46,6 +53,9 @@ async def lifespan(app: FastAPI):
     # 连接 MongoDB
     await init_mongodb()
 
+    # 连接 Redis
+    await init_redis()
+
     # LLM 可用性自检
     from app.ai.llm import check_llm_health
     llm_health = await check_llm_health()
@@ -54,16 +64,19 @@ async def lifespan(app: FastAPI):
     else:
         print(f"[LLM] 警告: {llm_health['reason']}")
 
-    # 初始化 RAG 索引（后台线程，避免阻塞启动）
-    import threading
-    def _init_rag():
+    # 初始化 RAG 索引（后台异步任务，避免阻塞启动）
+    async def _init_rag():
         try:
-            rag_indexer.initialize()
+            await asyncio.to_thread(rag_indexer.initialize)
+            logger.info("[RAG] 索引初始化完成")
         except Exception as e:
-            print(f"[RAG] 索引初始化失败（非阻塞）: {e}")
-    threading.Thread(target=_init_rag, daemon=True, name="rag-init").start()
+            logger.warning(f"[RAG] 索引初始化失败（非阻塞）: {e}")
+    asyncio.create_task(_init_rag())
 
     yield
+
+    # 关闭 Redis
+    await close_redis()
 
     # 关闭 MongoDB
     await close_mongodb()
@@ -76,11 +89,30 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# CORS 配置
+
+@app.exception_handler(AppException)
+async def app_exception_handler(request: Request, exc: AppException):
+    """统一业务异常处理"""
+    logger.warning(f"[Exception] {exc.status_code}: {exc.message}")
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"detail": exc.message},
+    )
+
+# CORS 配置：开发模式允许所有来源但不允许携带凭证，生产模式从环境变量读取
+is_prod = os.environ.get("SERVE_STATIC", "false").lower() == "true"
+if is_prod:
+    # 生产环境建议配置具体域名
+    cors_origins = os.environ.get("CORS_ORIGINS", "*").split(",")
+    allow_creds = os.environ.get("CORS_ALLOW_CREDENTIALS", "false").lower() == "true"
+else:
+    cors_origins = ["*"]
+    allow_creds = False
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
+    allow_origins=cors_origins,
+    allow_credentials=allow_creds,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -95,11 +127,22 @@ app.include_router(system.router, prefix="/api/v1", tags=["系统"])
 app.include_router(image_search.router, prefix="/api/v1", tags=["图片搜菜"])
 
 
-@app.get("/")
-async def root():
-    return {"message": "欢迎使用智能点餐机器人 API", "docs": "/docs", "version": "3.0.0"}
-
-
 @app.get("/health")
 async def health_check():
     return {"status": "ok", "app": "智能点餐机器人"}
+
+
+# 生产模式：托管前端静态文件（必须在 API 路由之后挂载，保证 API 优先）
+if is_prod:
+    static_dir = os.environ.get("STATIC_DIR", "../frontend/dist")
+    if os.path.isdir(static_dir):
+        # 挂载静态文件目录；html=True 表示对于不存在的路径自动返回 index.html
+        app.mount("/", StaticFiles(directory=static_dir, html=True), name="static")
+        print(f"[生产模式] 已挂载静态文件目录: {static_dir}")
+    else:
+        print(f"[警告] 生产模式静态文件目录不存在: {static_dir}")
+else:
+    @app.get("/")
+    async def root():
+        """开发模式 API 根路径信息"""
+        return {"message": "欢迎使用智能点餐机器人 API", "docs": "/docs", "version": "3.0.0"}

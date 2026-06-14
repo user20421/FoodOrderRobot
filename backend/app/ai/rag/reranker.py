@@ -81,7 +81,7 @@ class LLMReranker:
 class ContextCompressor:
     """上下文压缩器：提取文档中最相关的句子"""
 
-    async def compress(
+    def compress_sync(
         self,
         query: str,
         docs: List[Document],
@@ -106,6 +106,15 @@ class ContextCompressor:
             total_length += len(text) + 20
 
         return "\n\n".join(contexts)
+
+    async def compress(
+        self,
+        query: str,
+        docs: List[Document],
+        max_length: int = 800,
+    ) -> str:
+        """向后兼容的异步包装"""
+        return self.compress_sync(query, docs, max_length)
 
 
 # 全局实例

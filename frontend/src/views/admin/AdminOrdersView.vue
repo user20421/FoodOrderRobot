@@ -43,20 +43,21 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import api from '../../api'
 import { formatDate, statusType, statusText, downloadTxt } from '../../utils'
+import type { Order } from '../../types'
 
-const orders = ref([])
+const orders = ref<Order[]>([])
 const loading = ref(false)
 const exporting = ref(false)
 
 async function loadOrders() {
   loading.value = true
   try {
-    const res = await api.get('/admin/orders')
+    const res = await api.get<Order[]>('/admin/orders')
     orders.value = res.data
   } catch (e) {
     ElMessage.error('获取订单失败')
@@ -68,7 +69,7 @@ async function loadOrders() {
 async function exportAllOrders() {
   exporting.value = true
   try {
-    const res = await api.get('/admin/orders/export', { responseType: 'text' })
+    const res = await api.get<string>('/admin/orders/export', { responseType: 'text' })
     downloadTxt(res.data, 'all_orders.txt')
     ElMessage.success('全部订单导出成功')
   } catch (e) {

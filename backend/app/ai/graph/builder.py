@@ -6,21 +6,25 @@ LangGraph 多智能体工作流构建器
                                           ↓
                                     service_agent (兜底)
 """
-import re
-from datetime import datetime, timedelta, date
-from typing import Dict, Any, List
+from typing import Dict, Any
 from langgraph.graph import StateGraph, END
-from langchain_core.messages import HumanMessage, AIMessage
+from langchain_core.runnables import RunnableConfig
 
 from app.ai.graph.state import AgentState
+from app.ai.graph.parsers import parse_date_from_message, parse_order_intent
+from app.ai.graph.context import get_top_selling_dishes, enrich_cart
 from app.ai.agents import get_supervisor_agent, AGENT_MAP
 from app.ai.prompts.templates import build_dynamic_context
 from app.ai.utils import extract_user_message, get_message_role, get_message_content
 from app.ai.rag import rag_engine
 from app.core.logging_config import get_logger
 from app.core.database import AsyncSessionLocal
-from app.repositories.menu_repo import menu_item_repo
-from app.ai.agents.base import BaseToolAgent
+from app.repositories.order_repo import order_repo
+from app.services.order_service import (
+    create_order_from_cart,
+    format_order_line,
+    format_order_list,
+)
 
 logger = get_logger(__name__)
 
@@ -28,193 +32,47 @@ logger = get_logger(__name__)
 _agent_graph = None
 
 
-async def _get_top_selling_dishes(limit: int = 10) -> List[Dict]:
-    """查询销量最高的菜品"""
-    try:
-        from app.core.database import AsyncSessionLocal
-        from app.models.menu import MenuItem
-        from sqlalchemy import select
-        async with AsyncSessionLocal() as db:
-            result = await db.execute(
-                select(MenuItem)
-                .order_by(MenuItem.sales_count.desc())
-                .limit(limit)
-            )
-            items = result.scalars().all()
-            return [
-                {
-                    "name": item.name,
-                    "price": float(item.price),
-                    "description": item.description or "",
-                    "tags": item.tags or "",
-                    "sales_count": item.sales_count or 0,
-                    "category": item.category,
-                }
-                for item in items
-            ]
-    except Exception as e:
-        logger.warning(f"[TopSelling] 查询失败: {e}")
-        return []
+def _is_checkout_message(message: str) -> bool:
+    """判断用户消息是否为确认下单"""
+    if not message:
+        return False
+    keywords = ["确认下单", "确认订单", "我要下单", "现在下单", "提交订单", "去下单", "付款", "结账", "买单"]
+    lowered = message.lower()
+    return any(kw in lowered for kw in keywords)
 
 
-async def _enrich_cart(cart: List[Dict]) -> List[Dict]:
-    """补充购物车中的价格、menu_item_id等信息，并合并同名项"""
-    if not cart:
-        return cart
-    
-    try:
-        async with AsyncSessionLocal() as db:
-            from sqlalchemy import select
-            from app.models.menu import MenuItem
-            result = await db.execute(select(MenuItem))
-            all_menu_items = result.scalars().all()
-            
-            # 第一步：补充信息
-            enriched = []
-            for item in cart:
-                name = item.get("name", "")
-                menu_item = await menu_item_repo.get_by_name(db, name)
-                
-                if not menu_item and name:
-                    for mi in all_menu_items:
-                        if name in mi.name or mi.name in name:
-                            menu_item = mi
-                            break
-                
-                if menu_item:
-                    enriched.append({
-                        "menu_item_id": menu_item.id,
-                        "name": menu_item.name,
-                        "quantity": item.get("quantity", 1),
-                        "unit_price": float(menu_item.price),
-                    })
-                else:
-                    enriched.append(dict(item))
-            
-            # 第二步：合并同名项（按 menu_item_id 或 name）
-            merged = {}
-            for item in enriched:
-                key = item.get("menu_item_id") or item.get("name", "")
-                if not key:
-                    continue
-                if key in merged:
-                    merged[key]["quantity"] += item.get("quantity", 1)
-                else:
-                    merged[key] = dict(item)
-            
-            return list(merged.values())
-    except Exception as e:
-        logger.warning(f"[CartEnrich] 补充购物车信息失败: {e}")
-        return cart
+def _is_dish_mentioned_by_user(dish_name: str, user_message: str) -> bool:
+    """检查菜品名称是否在用户消息中被明确提及"""
+    if not dish_name or not user_message:
+        return False
 
+    um = user_message.lower()
+    dn = dish_name.lower()
 
-def _parse_date_from_message(msg: str) -> date | None:
-    """从用户消息中解析日期，支持今天/昨天/前天/X月X日/YYYY-MM-DD等"""
-    msg = msg.strip()
-    today = date.today()
+    # 完整菜名匹配
+    if dn in um:
+        return True
 
-    # 相对日期
-    if "前天" in msg:
-        return today - timedelta(days=2)
-    if "昨天" in msg:
-        return today - timedelta(days=1)
-    if "今天" in msg:
-        return today
+    # 去除常见修饰前缀后的核心词匹配
+    prefixes = ["招牌", "秘制", "特色", "经典", "传统", "家常", "干锅", "水煮",
+                "红烧", "麻辣", "香辣", "蒜蓉", "糖醋", "酸辣", "老坛", "川味",
+                "重庆", "北京", "东北", "广式", "清蒸", "干煸", "鱼香", "怪味"]
+    core_name = dn
+    for p in prefixes:
+        if core_name.startswith(p.lower()):
+            core_name = core_name[len(p):]
+            break
 
-    # 2026年5月31日 / 2026-05-31 / 2026/05/31
-    m = re.search(r'(\d{4})[-/年](\d{1,2})[-/月](\d{1,2})', msg)
-    if m:
-        return date(int(m.group(1)), int(m.group(2)), int(m.group(3)))
+    # 去除括号及后面的内容
+    for sep in ["（", "(", "【", "[", "·", " "]:
+        if sep in core_name:
+            core_name = core_name.split(sep)[0]
 
-    # 5月31日 / 5月31号
-    m = re.search(r'(\d{1,2})月(\d{1,2})[日号]', msg)
-    if m:
-        return date(today.year, int(m.group(1)), int(m.group(2)))
+    core_name = core_name.strip()
+    if core_name and core_name in um and len(core_name) >= 2:
+        return True
 
-    # 5/31 / 5-31
-    m = re.search(r'(\d{1,2})[-/](\d{1,2})', msg)
-    if m:
-        return date(today.year, int(m.group(1)), int(m.group(2)))
-
-    return None
-
-
-def _format_order_line(o) -> str:
-    """单条订单格式化"""
-    items_str = "，".join([f"{it.name} x{it.quantity}" for it in o.items])
-    time_str = o.created_at.strftime("%Y-%m-%d %H:%M") if hasattr(o.created_at, "strftime") else str(o.created_at)
-    from app.utils.formatters import order_status_text
-    return f"订单号：{o.id}，状态：{order_status_text(o.status)}，总价：¥{o.total_price:.2f}，菜品：{items_str}，下单时间：{time_str}"
-
-
-def _format_order_list(orders, title: str = "您最近的订单如下：") -> str:
-    """订单列表格式化"""
-    lines = [title]
-    for idx, o in enumerate(orders, 1):
-        lines.append(f"{idx}. {_format_order_line(o)}")
-    return "\n".join(lines)
-
-
-async def _parse_order_intent(user_message: str) -> dict:
-    """
-    用 LLM 解析用户的订单查询意图，返回结构化参数。
-    LLM 只负责理解语言，不接触真实订单数据，彻底避免编造。
-    """
-    from app.ai.llm import get_llm
-    from langchain_core.messages import SystemMessage, HumanMessage
-
-    current_year = date.today().year
-    system_prompt = (
-        "你是订单查询意图解析器。请严格只输出JSON，不要输出任何其他文字、解释或示例。\n"
-        f"当前年份是 {current_year} 年，解析日期时请使用 {current_year} 年。\n\n"
-        '输出格式（严格按此格式，不要加任何额外内容）：\n'
-        '{"limit": 数字, "date": "YYYY-MM-DD" 或 null, "sort": "desc" 或 "asc", "single": true 或 false}\n\n'
-        "解析规则：\n"
-        '1. limit：用户要查多少条。默认10，最大50。"最近一条"→1，"最近两条"→2，"所有"→50。\n'
-        '2. date：如果用户指定了具体日期（如"今天的""昨天的""5月31日的"），填YYYY-MM-DD；否则null。\n'
-        '3. sort："desc"=最新在前（默认），"asc"=最旧在前。用户说"最早"时填"asc"，说"最近/最新"时填"desc"。\n'
-        '4. single：用户是否只要求"一条/一个/单笔"订单。true 时 limit 强制为1。\n\n'
-        "示例（仅供理解，不要输出）：\n"
-        '- "查询我的订单" → {"limit": 10, "date": null, "sort": "desc", "single": false}\n'
-        '- "最近的一次订单" → {"limit": 1, "date": null, "sort": "desc", "single": true}\n'
-        '- "最早的两条订单" → {"limit": 2, "date": null, "sort": "asc", "single": false}'
-    )
-
-    try:
-        llm = get_llm(temperature=0.0)
-        response = await llm.ainvoke([
-            SystemMessage(content=system_prompt),
-            HumanMessage(content=f'用户消息："{user_message}"\n\n请只输出JSON：'),
-        ])
-        content = response.content.strip().replace("```json", "").replace("```", "").strip()
-        # 提取第一个 { 到最后一个 } 之间的内容，防止LLM输出额外文字
-        start = content.find("{")
-        end = content.rfind("}")
-        if start != -1 and end != -1 and end > start:
-            content = content[start:end+1]
-        import json
-        result = json.loads(content)
-        # 参数校验
-        result["limit"] = max(1, min(int(result.get("limit", 10)), 50))
-        result["sort"] = "asc" if result.get("sort") == "asc" else "desc"
-        result["single"] = bool(result.get("single", False))
-        if result["single"]:
-            result["limit"] = 1
-        # 正则兜底：总是用正则重新解析日期，覆盖 LLM 可能错误的日期（如训练数据截止年份）
-        parsed = _parse_date_from_message(user_message)
-        if parsed:
-            result["date"] = parsed.isoformat()
-        return result
-    except Exception as e:
-        logger.warning(f"[OrderIntent] LLM 解析失败，使用默认参数: {e}")
-        # 兜底：尝试正则解析日期
-        parsed = _parse_date_from_message(user_message)
-        return {
-            "limit": 10,
-            "date": parsed.isoformat() if parsed else None,
-            "sort": "desc",
-            "single": False,
-        }
+    return False
 
 
 async def supervisor_node(state: AgentState) -> Dict[str, Any]:
@@ -252,50 +110,7 @@ async def supervisor_node(state: AgentState) -> Dict[str, Any]:
     }
 
 
-def _is_checkout_message(message: str) -> bool:
-    """判断用户消息是否为确认下单"""
-    if not message:
-        return False
-    keywords = ["确认下单", "确认订单", "我要下单", "现在下单", "提交订单", "去下单", "付款", "结账", "买单"]
-    lowered = message.lower()
-    return any(kw in lowered for kw in keywords)
-
-
-def _is_dish_mentioned_by_user(dish_name: str, user_message: str) -> bool:
-    """检查菜品名称是否在用户消息中被明确提及"""
-    if not dish_name or not user_message:
-        return False
-    
-    um = user_message.lower()
-    dn = dish_name.lower()
-    
-    # 完整菜名匹配
-    if dn in um:
-        return True
-    
-    # 去除常见修饰前缀后的核心词匹配
-    prefixes = ["招牌", "秘制", "特色", "经典", "传统", "家常", "干锅", "水煮", 
-                "红烧", "麻辣", "香辣", "蒜蓉", "糖醋", "酸辣", "老坛", "川味", 
-                "重庆", "北京", "东北", "广式", "清蒸", "干煸", "鱼香", "怪味"]
-    core_name = dn
-    for p in prefixes:
-        if core_name.startswith(p.lower()):
-            core_name = core_name[len(p):]
-            break
-    
-    # 去除括号及后面的内容
-    for sep in ["（", "(", "【", "[", "·", " "]:
-        if sep in core_name:
-            core_name = core_name.split(sep)[0]
-    
-    core_name = core_name.strip()
-    if core_name and core_name in um and len(core_name) >= 2:
-        return True
-    
-    return False
-
-
-async def agent_node(state: AgentState) -> Dict[str, Any]:
+async def agent_node(state: AgentState, config: RunnableConfig) -> Dict[str, Any]:
     """专业Agent节点：执行具体任务"""
     agent_name = state.get("active_agent", "service")
     messages = state.get("messages", [])
@@ -303,6 +118,11 @@ async def agent_node(state: AgentState) -> Dict[str, Any]:
     user_id = state.get("user_id", 0)
     summary = state.get("summary", "")
     user_profile = state.get("user_profile", "")
+
+    # 从 RunnableConfig 获取请求级数据库会话，确保 Graph 内所有 DB 操作在同一个事务中
+    db = config.get("configurable", {}).get("db_session") if config else None
+    if db is None:
+        logger.warning("[AgentNode] 未从 config 获取到 db_session，将使用独立会话（可能破坏事务一致性）")
 
     # 提取用户最新消息
     user_message = extract_user_message(messages)
@@ -323,9 +143,11 @@ async def agent_node(state: AgentState) -> Dict[str, Any]:
 
     # 代码层兜底：用户明确说"确认下单"时，直接执行下单逻辑，不依赖LLM的工具调用判断
     if agent_name == "order" and _is_checkout_message(user_message) and cart:
-        result = await BaseToolAgent._handle_confirm_order(
-            {"user_id": user_id}, cart
-        )
+        if db is None:
+            async with AsyncSessionLocal() as db:
+                result = await create_order_from_cart(db, user_id, cart)
+        else:
+            result = await create_order_from_cart(db, user_id, cart)
         return {
             "response": result,
             "cart": [],
@@ -336,7 +158,7 @@ async def agent_node(state: AgentState) -> Dict[str, Any]:
     if agent_name == "inquiry":
         menu_keywords = ["查看菜单", "菜单一览", "菜单有哪些", "全部菜品", "所有菜品"]
         if any(kw in user_message for kw in menu_keywords):
-            top_dishes = await _get_top_selling_dishes(10)
+            top_dishes = await get_top_selling_dishes(db, 10) if db else []
             if top_dishes:
                 lines = []
                 for i, dish in enumerate(top_dishes, 1):
@@ -368,11 +190,15 @@ async def agent_node(state: AgentState) -> Dict[str, Any]:
     is_order_query = any(kw in user_message for kw in order_query_keywords)
     if is_order_query:
         # Step 1: LLM 解析意图（只理解语言，不接触数据）
-        intent = await _parse_order_intent(user_message)
+        intent = await parse_order_intent(user_message)
         logger.info(f"[Agent] 订单查询意图解析: {intent}")
 
         # Step 2: 代码查询真实数据
-        orders = await BaseToolAgent._query_orders_raw(user_id, limit=50)
+        if db is None:
+            async with AsyncSessionLocal() as db:
+                orders = await order_repo.get_by_user(db, user_id, limit=50)
+        else:
+            orders = await order_repo.get_by_user(db, user_id, limit=50)
         if not orders:
             result = "您还没有订单记录。"
         else:
@@ -386,9 +212,9 @@ async def agent_node(state: AgentState) -> Dict[str, Any]:
                     if not filtered:
                         result = f"{td.strftime('%Y年%m月%d日')}没有订单记录。"
                     else:
-                        result = _format_order_list(filtered, title=f"{td.strftime('%Y年%m月%d日')}的订单如下：")
+                        result = format_order_list(filtered, title=f"{td.strftime('%Y年%m月%d日')}的订单如下：")
                 except Exception:
-                    result = _format_order_list(orders[:intent["limit"]], title="您最近的订单如下：")
+                    result = format_order_list(orders[:intent["limit"]], title="您最近的订单如下：")
             else:
                 # 按排序和数量截取
                 sorted_orders = list(orders)
@@ -397,12 +223,12 @@ async def agent_node(state: AgentState) -> Dict[str, Any]:
                 sliced = sorted_orders[:intent["limit"]]
 
                 if intent["single"]:
-                    result = f"您{'最近' if intent['sort'] == 'desc' else '最早'}的一次订单详情：\n{_format_order_line(sliced[0])}"
+                    result = f"您{'最近' if intent['sort'] == 'desc' else '最早'}的一次订单详情：\n{format_order_line(sliced[0])}"
                 elif intent["limit"] == 1:
-                    result = f"您{'最近' if intent['sort'] == 'desc' else '最早'}的一次订单详情：\n{_format_order_line(sliced[0])}"
+                    result = f"您{'最近' if intent['sort'] == 'desc' else '最早'}的一次订单详情：\n{format_order_line(sliced[0])}"
                 else:
                     title = "您最近的订单如下：" if intent["sort"] == "desc" else "您最早的订单如下："
-                    result = _format_order_list(sliced, title=title)
+                    result = format_order_list(sliced, title=title)
 
         logger.info(f"[Agent] 订单查询直接回复，用户{user_id}，参数: {intent}")
         return {
@@ -427,13 +253,14 @@ async def agent_node(state: AgentState) -> Dict[str, Any]:
         except Exception as e:
             logger.warning(f"[Graph] RAG检索失败: {e}")
 
-    # 构建context
+    # 构建context，把请求级 db_session 注入 Agent，保证 Agent 内下单/查单与当前事务一致
     context = {
         "dynamic_context": dynamic_context,
         "history": history[:-1] if len(history) > 1 else [],
         "cart": cart,
         "user_id": user_id,
         "rag_context": rag_context,
+        "db_session": db,
     }
 
     # 保存旧购物车快照，用于对比新增项
@@ -463,7 +290,7 @@ async def agent_node(state: AgentState) -> Dict[str, Any]:
                     logger.warning(f"[CartGuard] 拦截幻觉加购: '{name}' 不在用户消息 '{user_message}' 中")
             else:
                 filtered_cart.append(item)
-        
+
         if removed_names:
             new_cart = filtered_cart
             # 重写回复：基于过滤后的正确购物车生成标准摘要，替换LLM的幻觉回复
@@ -484,7 +311,7 @@ async def agent_node(state: AgentState) -> Dict[str, Any]:
             response = "已为您添加菜品到购物车。\n\n当前购物车：\n" + "\n".join(cart_lines)
 
     # 补充购物车价格信息
-    enriched_cart = await _enrich_cart(new_cart)
+    enriched_cart = await enrich_cart(db, new_cart) if db else new_cart
 
     return {
         "response": response,

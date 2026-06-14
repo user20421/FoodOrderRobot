@@ -60,14 +60,17 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import api from '../api'
 import { useAuthStore } from '../stores/auth'
 import { useChatStore } from '../stores/chat'
 import { useCartStore } from '../stores/cart'
+import type { AuthResponse, UserRole } from '../types'
+import type { AxiosError } from 'axios'
+import type { ApiErrorDetail } from '../types'
 
 const router = useRouter()
 const authStore = useAuthStore()
@@ -77,7 +80,7 @@ const cartStore = useCartStore()
 const form = reactive({
   username: '',
   password: '',
-  role: 'customer',
+  role: 'customer' as UserRole,
 })
 
 const loading = ref(false)
@@ -96,23 +99,40 @@ async function handleLogin() {
   }
   loading.value = true
   try {
-    const res = await api.post('/auth/login', {
+    const res = await api.post<AuthResponse>('/auth/login', {
       username: form.username,
       password: form.password,
-      role: form.role,
     })
     const data = res.data
-    authStore.setAuth(data.user)
+
+    // 角色保护：商家账号必须选择商家入口登录
+    if (form.role === 'customer' && data.user.role === 'admin') {
+      form.role = 'admin'
+      await ElMessageBox.alert('该账号为商家账号，请使用“我是商家”入口登录', '提示', {
+        confirmButtonText: '确定',
+        type: 'warning',
+      })
+      return
+    }
+
+    authStore.setAuth({ user: data.user, token: data.token || '' })
     chatStore.reloadMessages()
     cartStore.reloadCart()
-    ElMessage.success(data.message)
+
+    if (form.role === 'admin' && data.user.role !== 'admin') {
+      ElMessage.warning('该账号不是商家账号，已按顾客身份登录')
+    } else {
+      ElMessage.success(data.message)
+    }
+
     if (data.user.role === 'admin') {
       router.push('/admin')
     } else {
       router.push('/chat')
     }
   } catch (err) {
-    ElMessage.error(err.response?.data?.detail || '登录失败')
+    const error = err as AxiosError<ApiErrorDetail>
+    ElMessage.error(error.response?.data?.detail || '登录失败')
   } finally {
     loading.value = false
   }
@@ -141,7 +161,8 @@ async function handleRegister() {
     registerForm.password = ''
     registerForm.confirmPassword = ''
   } catch (err) {
-    ElMessage.error(err.response?.data?.detail || '注册失败')
+    const error = err as AxiosError<ApiErrorDetail>
+    ElMessage.error(error.response?.data?.detail || '注册失败')
   } finally {
     registerLoading.value = false
   }

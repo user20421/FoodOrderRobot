@@ -136,13 +136,14 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { Microphone, Mute, Camera, Close } from '@element-plus/icons-vue'
 import { marked } from 'marked'
 import { storeToRefs } from 'pinia'
-import api from '../api'
-import { useCartStore } from '../stores/cart'
-import { useChatStore } from '../stores/chat'
-import { useAuthStore } from '../stores/auth'
-import DigitalAvatar from '../components/DigitalAvatar.vue'
-import { sanitizeHtml, sanitizeTextHtml } from '@/utils/sanitize'
-import type { ChatRequest, ChatResponse, CartItem } from '../types'
+import { useCartStore } from '@/features/cart/stores/cart.store'
+import { useChatStore } from '@/features/chat/stores/chat.store'
+import { useAuthStore } from '@/features/auth/stores/auth.store'
+import { sendChatMessage } from '@/features/chat/api/chat.api'
+import DigitalAvatar from '@/components/DigitalAvatar.vue'
+import { sanitizeHtml, sanitizeTextHtml } from '@/shared/utils/sanitize'
+import type { ChatRequest, CartItem } from '@/shared/types'
+import { STORAGE_KEY_SPEECH, IMAGE_UPLOAD_MAX_SIZE } from '@/shared/constants'
 
 type AvatarStatus = 'idle' | 'listening' | 'thinking' | 'speaking'
 
@@ -157,7 +158,7 @@ const cartVisible = ref(false)
 const messageBox = ref<HTMLElement | null>(null)
 const cartStore = useCartStore()
 const avatarStatus = ref<AvatarStatus>('idle')
-const speechEnabled = ref(localStorage.getItem('ordering_bot_speech') !== 'false')
+const speechEnabled = ref(localStorage.getItem(STORAGE_KEY_SPEECH) !== 'false')
 
 // 拍照搜菜状态
 const imageInput = ref<HTMLInputElement | null>(null)
@@ -165,7 +166,7 @@ const imageBase64 = ref<string>('')
 const imagePreviewUrl = ref<string>('')
 
 watch(speechEnabled, (val) => {
-  localStorage.setItem('ordering_bot_speech', val ? 'true' : 'false')
+  localStorage.setItem(STORAGE_KEY_SPEECH, val ? 'true' : 'false')
 })
 
 // Markdown 渲染缓存，避免重复解析
@@ -227,8 +228,8 @@ function handleImageChange(event: Event) {
   const file = target.files?.[0]
   if (!file) return
 
-  // 限制 5MB
-  if (file.size > 5 * 1024 * 1024) {
+  // 限制图片大小
+  if (file.size > IMAGE_UPLOAD_MAX_SIZE) {
     ElMessage.error('图片大小不能超过5MB')
     target.value = ''
     return
@@ -288,14 +289,14 @@ async function sendMessage() {
     // 深拷贝购物车，避免传递 Vue Proxy 对象给 axios
     const currentCart: CartItem[] = JSON.parse(JSON.stringify(cartStore.items || []))
     const payload: ChatRequest = {
-      user_id: authStore.userId,
+      user_id: authStore.userId ?? 0,
       message: text,
       cart: currentCart,
     }
     if (currentImageBase64) {
       payload.image_base64 = currentImageBase64
     }
-    const res = await api.post<ChatResponse>('/chat', payload)
+    const res = await sendChatMessage(payload)
     const data = res.data
     // 构建购物车摘要，作为对话内容的一部分展示给用户
     let responseText = data.response || ''
@@ -338,7 +339,7 @@ function speakText(text: string) {
 
 function toggleSpeech() {
   speechEnabled.value = !speechEnabled.value
-  localStorage.setItem('ordering_bot_speech', speechEnabled.value ? 'true' : 'false')
+  localStorage.setItem(STORAGE_KEY_SPEECH, speechEnabled.value ? 'true' : 'false')
 }
 
 async function confirmOrder() {

@@ -9,11 +9,17 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
 from app.api.deps import require_admin
 from app.schemas.menu import MenuItemCreate, MenuItemUpdate, MenuItemOut
-from app.schemas.order import OrderOut
+from app.schemas.order import OrderOut, PaginatedOrdersResponse
 from app.services.menu_service import (
     get_menu_items, create_menu_item, update_menu_item, delete_menu_item, count_menu_items
 )
-from app.services.order_service import get_all_orders, get_dashboard_stats, get_pending_orders, complete_order
+from app.services.order_service import (
+    get_all_orders_paginated,
+    count_all_orders,
+    get_dashboard_stats,
+    get_pending_orders,
+    complete_order,
+)
 from app.utils.formatters import export_order_text
 
 router = APIRouter()
@@ -76,18 +82,33 @@ async def admin_delete_menu(
     raise HTTPException(status_code=404, detail="菜品不存在")
 
 
-@router.get("/admin/orders", response_model=list[OrderOut])
+@router.get("/admin/orders", response_model=PaginatedOrdersResponse)
 async def admin_list_orders(
-    skip: int = 0,
-    limit: int = 100,
+    page: int = 1,
+    page_size: int = 10,
     current_user: dict = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
-    """商家获取全部订单"""
-    skip = max(0, skip)
-    limit = max(1, min(limit, 100))
-    orders = await get_all_orders(db, skip, limit)
-    return orders
+    """商家获取全部订单（分页）"""
+    page = max(1, page)
+    page_size = max(1, min(page_size, 100))
+    orders, total = await get_all_orders_paginated(db, page, page_size)
+    return {
+        "items": orders,
+        "total": total,
+        "page": page,
+        "page_size": page_size,
+    }
+
+
+@router.get("/admin/orders/count")
+async def admin_count_orders(
+    current_user: dict = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """商家获取订单总数"""
+    total = await count_all_orders(db)
+    return {"total": total}
 
 
 @router.get("/admin/orders/pending", response_model=list[OrderOut])
@@ -110,6 +131,7 @@ async def admin_complete_order(
     order = await complete_order(db, order_id)
     if not order:
         raise HTTPException(status_code=404, detail="订单不存在")
+    await db.commit()
     return {"message": "订单已完成", "order": order}
 
 
@@ -119,7 +141,7 @@ async def admin_export_orders(
     db: AsyncSession = Depends(get_db),
 ):
     """商家导出全部订单"""
-    orders = await get_all_orders(db, limit=1000)
+    orders, _ = await get_all_orders_paginated(db, page=1, page_size=1000)
     lines = [export_order_text(o.model_dump()) for o in orders]
     return PlainTextResponse(
         content="\n\n".join(lines),

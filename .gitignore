@@ -85,3 +85,7 @@ develop_prompts.txt
 http_remove_test.txt
 frontend/frontend.log
 frontend/frontend_err.log
+菜品.jpg
+
+# Local backups
+backups/

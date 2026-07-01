@@ -1,13 +1,12 @@
 """
 记忆管理器门面
-整合短期记忆、摘要记忆、实体记忆、向量记忆
+整合短期记忆、摘要记忆、向量记忆（已移除实体/用户画像记忆）
 """
 from typing import List, Dict, Any, Tuple, Optional
 import json
 
 from app.ai.memory.buffer_memory import BufferMemory
 from app.ai.memory.summary_memory import SummaryMemory
-from app.ai.memory.entity_memory import EntityMemory
 from app.ai.memory.vector_memory import VectorMemory
 from app.core.mongodb import is_mongodb_available, is_beanie_initialized
 from app.core.redis import get_redis, is_redis_available
@@ -27,12 +26,11 @@ def _summary_key(user_id: int, session_id: str) -> str:
 
 
 class MemoryManager:
-    """统一记忆管理器"""
+    """统一记忆管理器（Buffer + Summary + Vector，移除用户画像/实体记忆）"""
 
     def __init__(self):
         self.buffer = BufferMemory()
         self.summary = SummaryMemory()
-        self.entity = EntityMemory()
         self.vector = VectorMemory()
 
     async def _load_history_from_cache(self, user_id: int, session_id: str) -> Optional[List[Dict[str, str]]]:
@@ -164,20 +162,10 @@ class MemoryManager:
 
         return messages, summary_text
 
-    async def get_user_profile_text(self, user_id: int) -> str:
-        """获取用户画像文本（用于提示词注入）"""
-        profile = await self.entity.get_profile(user_id)
-        return self.entity.format_profile_for_prompt(profile)
-
-    async def search_similar_memories(self, user_id: int, query: str, k: int = 3) -> List[str]:
-        """搜索相似历史记忆"""
-        return await self.vector.search_similar(user_id, query, k)
-
     def add_to_buffer(self, user_id: int, role: str, content: str):
         """添加消息到缓冲区"""
         self.buffer.add(user_id, role, content)
 
     def invalidate_cache(self, user_id: int):
         """使缓存失效（当前 Buffer 为内存，无需显式失效）"""
-        # Buffer不需要显式失效，每次get都取最新
         pass

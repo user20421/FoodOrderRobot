@@ -48,3 +48,10 @@ class OrderExport(BaseModel):
     total_price: float
     created_at: datetime
     item_summary: str
+
+
+class PaginatedOrdersResponse(BaseModel):
+    items: List[OrderOut]
+    total: int
+    page: int
+    page_size: int

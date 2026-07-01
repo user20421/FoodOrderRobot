@@ -16,15 +16,34 @@ class OrderRepository(BaseRepository[Order]):
     def __init__(self):
         super().__init__(Order)
 
-    async def get_by_user(self, db: AsyncSession, user_id: int, limit: int = 20) -> List[Order]:
+    async def get_by_user(self, db: AsyncSession, user_id: int, limit: int = 20, offset: int = 0) -> List[Order]:
         result = await db.execute(
             select(Order)
             .where(Order.user_id == user_id)
             .order_by(desc(Order.created_at))
+            .offset(offset)
             .limit(limit)
             .options(selectinload(Order.items).selectinload(OrderItem.menu_item))
         )
         return result.scalars().all()
+
+    async def get_by_user_in_date_range(
+        self, db: AsyncSession, user_id: int, start: datetime, end: datetime
+    ) -> List[Order]:
+        """查询用户在指定时间范围内的订单（含边界）。"""
+        result = await db.execute(
+            select(Order)
+            .where(Order.user_id == user_id)
+            .where(Order.created_at >= start)
+            .where(Order.created_at <= end)
+            .order_by(desc(Order.created_at))
+            .options(selectinload(Order.items).selectinload(OrderItem.menu_item))
+        )
+        return result.scalars().all()
+
+    async def count_by_user(self, db: AsyncSession, user_id: int) -> int:
+        result = await db.execute(select(func.count(Order.id)).where(Order.user_id == user_id))
+        return result.scalar() or 0
 
     async def get_with_items(self, db: AsyncSession, order_id: int) -> Optional[Order]:
         result = await db.execute(
@@ -43,6 +62,10 @@ class OrderRepository(BaseRepository[Order]):
             .options(selectinload(Order.items).selectinload(OrderItem.menu_item))
         )
         return result.scalars().all()
+
+    async def count_all(self, db: AsyncSession) -> int:
+        result = await db.execute(select(func.count(Order.id)))
+        return result.scalar() or 0
 
     async def get_today_orders(self, db: AsyncSession) -> List[Order]:
         """获取今日订单（按本地日期 00:00 起）。"""

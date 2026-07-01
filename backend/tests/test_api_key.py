@@ -4,44 +4,23 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from app.core.config import settings
 
-print(f"API Key from env: {settings.dashscope_api_key[:20]}..." if settings.dashscope_api_key else "No API Key")
+api_key = settings.zhipu_api_key or os.environ.get("ZHIPU_API_KEY", "")
+print(f"API Key from env: {api_key[:20]}..." if api_key else "No API Key")
 print(f"Chat model: {settings.chat_model}")
 
-# 测试 qwen-turbo
+# 测试智谱对话模型
 try:
-    import dashscope
-    dashscope.api_key = settings.dashscope_api_key
-    from http import HTTPStatus
-    from dashscope import Generation
-    
-    print("\nTesting qwen-turbo...")
-    response = Generation.call(
-        model="qwen-turbo",
-        messages=[{"role": "user", "content": "你好"}],
-        result_format="message"
-    )
-    print(f"status: {response.status_code}")
-    if response.status_code == HTTPStatus.OK:
-        print("qwen-turbo: OK")
-    else:
-        print(f"qwen-turbo error: {response.message}")
-        
-except Exception as e:
-    print(f"qwen-turbo ERROR: {type(e).__name__}: {e}")
+    from zhipuai import ZhipuAI
+    client = ZhipuAI(api_key=api_key)
 
-# 测试 qwen-plus
-try:
-    print("\nTesting qwen-plus...")
-    response = Generation.call(
-        model="qwen-plus",
+    print(f"\nTesting {settings.chat_model}...")
+    response = client.chat.completions.create(
+        model=settings.chat_model,
         messages=[{"role": "user", "content": "你好"}],
-        result_format="message"
     )
-    print(f"status: {response.status_code}")
-    if response.status_code == HTTPStatus.OK:
-        print("qwen-plus: OK")
-    else:
-        print(f"qwen-plus error: {response.message}")
-        
+    content = response.choices[0].message.content[:100]
+    safe = content.encode("ascii", "replace").decode("ascii")
+    print(f"response: {safe}")
+    print(f"{settings.chat_model}: OK")
 except Exception as e:
-    print(f"qwen-plus ERROR: {type(e).__name__}: {e}")
+    print(f"{settings.chat_model} ERROR: {type(e).__name__}: {e}")

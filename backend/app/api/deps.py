@@ -68,25 +68,3 @@ async def require_admin(current_user: dict = Depends(get_current_user)) -> dict:
             detail="权限不足，需要管理员权限",
         )
     return current_user
-
-
-def check_admin(request: Request):
-    """检查是否为管理员（兼容旧版普通函数调用，逐步迁移到 require_admin）"""
-    token = request.headers.get("Authorization", "")
-    if token.startswith("Bearer "):
-        try:
-            payload = _decode_token(token[7:])
-            if payload.get("role") == "admin":
-                return True
-        except Exception:
-            pass
-
-    # 兼容旧请求头
-    user_role = request.headers.get("X-User-Role", "")
-    if user_role == "admin":
-        return True
-
-    raise HTTPException(
-        status_code=status.HTTP_403_FORBIDDEN,
-        detail="权限不足，需要管理员权限",
-    )

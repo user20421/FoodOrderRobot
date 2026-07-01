@@ -1,19 +1,22 @@
 """
-RAG 混合检索器
-Dense Retrieval + Sparse Retrieval (BM25) + Metadata Filter
+RAG 轻量检索器
+Dense Retrieval + Sparse Retrieval (BM25)，单查询，无重写/扩展/重排序。
 """
 from typing import List, Tuple, Dict, Any
 from langchain_core.documents import Document
 from rank_bm25 import BM25Okapi
 
 from app.core.chroma_client import chroma_store
+from app.core.config import settings
 from app.core.logging_config import get_logger
 
 logger = get_logger(__name__)
 
 
 class HybridRetriever:
-    """混合检索器：向量检索 + BM25 + 元数据过滤"""
+    """混合检索器：向量检索 + BM25"""
+
+    DEFAULT_COLLECTIONS = ["menu_docs", "faq_docs", "store_docs"]
 
     def __init__(self):
         self._bm25_index: Dict[str, BM25Okapi] = {}
@@ -26,7 +29,6 @@ class HybridRetriever:
 
         try:
             collection = chroma_store.get_collection(collection_name)
-            # 获取所有文档
             all_docs = collection.get()
             documents = []
             for i, text in enumerate(all_docs.get("documents", [])):
@@ -55,7 +57,6 @@ class HybridRetriever:
         scores = bm25.get_scores(tokenized_query)
         docs = self._bm25_docs.get(collection_name, [])
 
-        # 取top-k
         top_indices = sorted(range(len(scores)), key=lambda i: scores[i], reverse=True)[:k]
         results = []
         for idx in top_indices:
@@ -67,10 +68,9 @@ class HybridRetriever:
         """向量检索"""
         try:
             results = chroma_store.search(collection_name, query, k=k, filter_dict=filter_dict)
-            # Chroma返回的是(distance)，distance越小越相似，需要转换
             docs = []
             for doc, score in results:
-                # 将distance转为相似度分数（简单取反）
+                # 将 distance 转为相似度分数（简单取反）
                 similarity = max(0, 1.0 - score)
                 docs.append((doc, similarity))
             return docs
@@ -90,17 +90,38 @@ class HybridRetriever:
         混合检索
         返回: [(Document, score), ...]
         """
-        # 向量检索
         vector_results = self._vector_search(collection_name, query, k=k * 2, filter_dict=filter_dict)
 
         if not use_hybrid:
             return vector_results[:k]
 
-        # BM25检索
         bm25_results = self._bm25_search(collection_name, query, k=k * 2)
-
-        # RRF融合
         return self._rrf_fusion(vector_results, bm25_results, top_k=k)
+
+    def search_all_collections(
+        self,
+        query: str,
+        k: int = None,
+    ) -> List[Tuple[Document, float]]:
+        """在所有知识库集合中检索并去重。"""
+        k = k or settings.rag_top_k
+        all_results = []
+        for collection in self.DEFAULT_COLLECTIONS:
+            try:
+                results = self.search(collection, query, k=k)
+                all_results.extend(results)
+            except Exception as e:
+                logger.warning(f"[Retriever] 检索集合 {collection} 失败: {e}")
+
+        # 去重（按内容前100字）并取 top-k
+        seen = set()
+        unique_results = []
+        for doc, score in sorted(all_results, key=lambda x: x[1], reverse=True):
+            key = doc.page_content[:100]
+            if key not in seen:
+                seen.add(key)
+                unique_results.append((doc, score))
+        return unique_results[:k]
 
     @staticmethod
     def _rrf_fusion(
@@ -113,19 +134,16 @@ class HybridRetriever:
         scores: Dict[str, float] = {}
         doc_map: Dict[str, Document] = {}
 
-        # 向量检索打分（按rank）
         for rank, (doc, _) in enumerate(vector_results):
-            key = doc.page_content[:100]  # 用内容前100字作为key
+            key = doc.page_content[:100]
             scores[key] = scores.get(key, 0) + 1.0 / (k + rank + 1)
             doc_map[key] = doc
 
-        # BM25打分（按rank）
         for rank, (doc, _) in enumerate(bm25_results):
             key = doc.page_content[:100]
             scores[key] = scores.get(key, 0) + 1.0 / (k + rank + 1)
             doc_map[key] = doc
 
-        # 排序取top
         sorted_keys = sorted(scores.keys(), key=lambda x: scores[x], reverse=True)
         results = []
         for key in sorted_keys[:top_k]:
@@ -135,3 +153,21 @@ class HybridRetriever:
 
 # 全局检索器
 hybrid_retriever = HybridRetriever()
+
+
+async def retrieve_knowledge(question: str) -> str:
+    """
+    轻量 RAG 入口：单查询混合检索，失败时返回空字符串。
+    不调用 LLM 进行查询重写/扩展/重排序。
+    """
+    try:
+        results = hybrid_retriever.search_all_collections(question)
+        if not results:
+            return "未找到相关知识。"
+        lines = []
+        for i, (doc, _) in enumerate(results, 1):
+            lines.append(f"[{i}] {doc.page_content}")
+        return "\n\n".join(lines)
+    except Exception as e:
+        logger.warning(f"[retrieve_knowledge] 检索失败: {e}")
+        return ""

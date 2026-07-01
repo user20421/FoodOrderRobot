@@ -244,7 +244,7 @@ async def test_image_search():
 
 async def run_all_tests():
     print("=" * 60)
-    print("智能点餐机器人 - 全面功能测试")
+    print("美味餐厅 - 全面功能测试")
     print("=" * 60)
     
     await test_health()

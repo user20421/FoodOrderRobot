@@ -2,7 +2,7 @@
 聊天记录模型（MySQL fallback）
 主要聊天记录存储在 MongoDB，此表作为降级备份
 """
-from sqlalchemy import Column, Integer, String, Text, DateTime, func, ForeignKey
+from sqlalchemy import Column, Integer, String, Text, DateTime, func, ForeignKey, Index
 from sqlalchemy.orm import relationship
 
 from app.core.database import Base
@@ -20,3 +20,7 @@ class ChatHistory(Base):
 
     # 关联
     user = relationship("User", back_populates="chat_history")
+
+    __table_args__ = (
+        Index("idx_chat_user_session_created", "user_id", "session_id", "created_at"),
+    )

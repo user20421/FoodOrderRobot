@@ -2,7 +2,7 @@
 FastAPI 应用入口
 """
 import os
-# 彻底清除所有代理设置，防止 DashScope/requests 连接失败
+# 彻底清除所有代理设置，防止智谱 AI/requests 连接失败
 for proxy_var in ["HTTP_PROXY", "HTTPS_PROXY", "http_proxy", "https_proxy"]:
     os.environ.pop(proxy_var, None)
 os.environ["NO_PROXY"] = "*"
@@ -83,8 +83,8 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="智能点餐机器人",
-    description="基于 FastAPI + LangGraph 多智能体架构 + DashScope 的智能点餐系统",
+    title="美味餐厅",
+    description="基于 FastAPI + LangGraph 多智能体架构 + 智谱 AI 的美味餐厅",
     version="3.0.0",
     lifespan=lifespan,
 )
@@ -129,7 +129,7 @@ app.include_router(image_search.router, prefix="/api/v1", tags=["图片搜菜"])
 
 @app.get("/health")
 async def health_check():
-    return {"status": "ok", "app": "智能点餐机器人"}
+    return {"status": "ok", "app": "美味餐厅"}
 
 
 # 生产模式：托管前端静态文件（必须在 API 路由之后挂载，保证 API 优先）
@@ -145,4 +145,4 @@ else:
     @app.get("/")
     async def root():
         """开发模式 API 根路径信息"""
-        return {"message": "欢迎使用智能点餐机器人 API", "docs": "/docs", "version": "3.0.0"}
+        return {"message": "欢迎使用美味餐厅 API", "docs": "/docs", "version": "3.0.0"}

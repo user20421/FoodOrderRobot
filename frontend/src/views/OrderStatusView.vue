@@ -47,20 +47,22 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue'
 import { ElMessage } from 'element-plus'
-import api from '@/api'
-import { formatDate } from '@/utils'
-import type { Order } from '@/types'
+import { fetchAllOrders } from '@/features/orders/api/order.api'
+import { useAuthStore } from '@/features/auth/stores/auth.store'
+import { formatDate } from '@/shared/utils/date'
+import type { Order } from '@/shared/types'
 
 const orders = ref<Order[]>([])
 const loading = ref(false)
+const authStore = useAuthStore()
 
 const activeOrders = computed(() => orders.value.filter(o => o.status !== 'completed'))
 
 async function loadOrders() {
   loading.value = true
   try {
-    const res = await api.get<Order[]>('/orders')
-    orders.value = res.data
+    const res = await fetchAllOrders(authStore.userId ?? 0)
+    orders.value = res.data.items
   } catch (e) {
     ElMessage.error('获取订单状态失败')
   } finally {

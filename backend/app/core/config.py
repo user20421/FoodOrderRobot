@@ -8,7 +8,7 @@ from functools import lru_cache
 
 class Settings(BaseSettings):
     # 应用配置
-    app_name: str = "智能点餐机器人"
+    app_name: str = "美味餐厅"
     debug: bool = False
     version: str = "3.0.0"
 
@@ -29,13 +29,14 @@ class Settings(BaseSettings):
     # Chroma 配置
     chroma_persist_dir: str = "./chroma_db"
 
-    # 阿里云 DashScope 配置
-    dashscope_api_key: str = ""  # 从环境变量 DASHSCOPE_API_KEY 读取
+    # 智谱 AI (Zhipu) 配置
+    zhipu_api_key: str = ""  # 从环境变量 ZHIPU_API_KEY 读取
 
     # 模型配置
-    chat_model: str = "qwen-plus-latest"  # qwen-plus-latest / qwen-max / qwen-turbo / qwen3-max
-    embedding_model: str = "text-embedding-v4"
-    vision_model: str = "qwen3-omni-flash"  # 多模态视觉模型: qwen-vl-plus / qwen-vl-max / qwen3.5-omni-plus / qwen3-omni-flash-realtime(fallback)
+    chat_model: str = "glm-4.5-air"  # 对话模型: glm-4.5-air / glm-4-air / glm-4-flash
+    embedding_model: str = "embedding-3"  # 智谱 Embedding-3 支持 256/512/1024/2048 维
+    embedding_dimensions: int = 512  # 向量维度（必须与 Chroma 集合一致）
+    vision_model: str = "glm-4.6v"  # 多模态视觉模型
 
     # 记忆管理配置
     memory_max_tokens: int = 3000

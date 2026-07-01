@@ -1,7 +1,7 @@
 """
 菜单模型
 """
-from sqlalchemy import Column, Integer, String, Float, Text, DateTime, func
+from sqlalchemy import Column, Integer, String, Float, Text, DateTime, func, Index
 from sqlalchemy.orm import relationship
 
 from app.core.database import Base
@@ -23,6 +23,7 @@ class MenuItem(Base):
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
     name = Column(String(100), nullable=False, comment="菜品名称")
     description = Column(Text, nullable=True, comment="菜品描述")
+    # 金额使用 Float 方便迁移；生产环境建议改为 Numeric(10,2)
     price = Column(Float, nullable=False, comment="价格（元）")
     spicy_level = Column(Integer, default=0, comment="辣度 0-5")
     category = Column(String(50), nullable=False, comment="分类名称")
@@ -35,3 +36,10 @@ class MenuItem(Base):
 
     # 关联
     order_items = relationship("OrderItem", back_populates="menu_item")
+
+    # 常用查询索引
+    __table_args__ = (
+        Index("idx_menu_item_name", "name"),
+        Index("idx_menu_item_category", "category"),
+        Index("idx_menu_item_sales", "sales_count"),
+    )

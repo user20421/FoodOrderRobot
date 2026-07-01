@@ -61,9 +61,9 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
-import api from '../api'
-import { useCartStore } from '../stores/cart'
-import type { MenuItem, CartItem } from '../types'
+import { fetchMenuItems } from '@/features/menu/api/menu.api'
+import { useCartStore } from '@/features/cart/stores/cart.store'
+import type { MenuItem, CartItem } from '@/shared/types'
 
 const items = ref<MenuItem[]>([])
 const search = ref('')
@@ -121,7 +121,7 @@ function addToCart(item: MenuItem) {
 
 onMounted(async () => {
   try {
-    const res = await api.get<MenuItem[]>('/menu')
+    const res = await fetchMenuItems()
     items.value = res.data
   } catch (e) {
     ElMessage.error('获取菜单失败')

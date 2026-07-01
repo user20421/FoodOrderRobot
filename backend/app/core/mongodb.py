@@ -5,7 +5,7 @@ MongoDB 连接管理
 from motor.motor_asyncio import AsyncIOMotorClient
 from beanie import init_beanie
 from app.core.config import settings
-from app.documents import ChatMessageDocument, UserProfileDocument, ConversationSummaryDocument
+from app.documents import ChatMessageDocument, ConversationSummaryDocument
 
 _mongodb_client: AsyncIOMotorClient | None = None
 _mongodb_db = None
@@ -24,12 +24,20 @@ async def init_mongodb():
         await _mongodb_client.admin.command("ping")
         _mongodb_db = _mongodb_client.get_default_database()
 
+        # 兼容 Beanie 2.1.0 + Motor 3.7.x：
+        # Beanie 会调用 database.client.append_metadata()，但 Motor 的 AsyncIOMotorClient
+        # 把任意属性访问都当成 database 名称，导致 append_metadata 被解析为 MotorDatabase。
+        # 此处通过 monkey-patch 将调用委托给底层的 PyMongo MongoClient。
+        if not hasattr(AsyncIOMotorClient, "append_metadata"):
+            def _append_metadata(self, metadata):
+                return self.delegate.append_metadata(metadata)
+            AsyncIOMotorClient.append_metadata = _append_metadata
+
         # 初始化 Beanie ODM
         await init_beanie(
             database=_mongodb_db,
             document_models=[
                 ChatMessageDocument,
-                UserProfileDocument,
                 ConversationSummaryDocument,
             ],
         )

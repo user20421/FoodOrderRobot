@@ -8,10 +8,10 @@ from app.ai.llm import get_llm
 from langchain_core.messages import HumanMessage
 
 async def test():
-    print("Testing LLM (ChatTongyi via langchain)...")
+    print("Testing LLM (ChatZhipuAI via langchain)...")
     llm = get_llm(temperature=0.1)
     print(f"LLM type: {type(llm).__name__}")
-    
+
     t0 = time.time()
     try:
         r = await llm.ainvoke([HumanMessage(content="你好")])
@@ -19,9 +19,6 @@ async def test():
         safe = r.content.encode("ascii", "replace").decode("ascii")
         print(f"Response: {safe[:100]}")
         print("LLM TEST PASSED")
-    except KeyError as e:
-        print(f"KeyError after {time.time() - t0:.2f}s: {e}")
-        print("This is the known DashScope SDK bug when API returns error")
     except Exception as e:
         print(f"Error after {time.time() - t0:.2f}s: {type(e).__name__}: {e}")
 

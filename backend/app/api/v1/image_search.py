@@ -8,8 +8,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
 from app.core.logging_config import get_logger
 from app.services.image_search_service import (
-    _ALLOWED_IMAGE_TYPES,
-    _IMAGE_MAGIC,
+    ALLOWED_IMAGE_TYPES,
+    IMAGE_MAGIC,
     search_dishes_by_image,
 )
 
@@ -30,11 +30,19 @@ async def image_search(
             raise HTTPException(status_code=400, detail="图片大小不能超过5MB")
 
         mime_type = file.content_type or ""
-        if mime_type not in _ALLOWED_IMAGE_TYPES:
+        if mime_type not in ALLOWED_IMAGE_TYPES:
             raise HTTPException(status_code=400, detail="仅支持 jpeg/png/webp/gif 格式的图片")
 
-        # 文件头校验
-        valid_magic = any(contents.startswith(magic) for magic in _IMAGE_MAGIC)
+        # 文件头校验（WebP 额外检查 bytes[8:12] == b"WEBP"）
+        valid_magic = False
+        for magic in IMAGE_MAGIC:
+            if contents.startswith(magic):
+                if magic == b"RIFF" and len(contents) >= 12 and contents[8:12] == b"WEBP":
+                    valid_magic = True
+                    break
+                elif magic != b"RIFF":
+                    valid_magic = True
+                    break
         if not valid_magic:
             raise HTTPException(status_code=400, detail="上传文件不是有效的图片")
 

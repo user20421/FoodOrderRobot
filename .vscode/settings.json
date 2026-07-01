@@ -1,4 +1,6 @@
 {
   "python.defaultInterpreterPath": "D:\\code\\langchain\\点餐机器人\\.venv\\Scripts\\python.exe",
-  "git.ignoreLimitWarning": true
+  "git.ignoreLimitWarning": true,
+  // 使用工作区前端目录下的 TypeScript，确保与 vue-tsc 版本一致
+  "typescript.tsdk": "frontend/node_modules/typescript/lib"
 }

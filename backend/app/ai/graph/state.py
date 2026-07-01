@@ -6,12 +6,11 @@ from langgraph.graph.message import add_messages
 
 
 class AgentState(TypedDict):
-    """多智能体共享状态"""
+    """Handoff 多智能体共享状态"""
     # 对话相关
     messages: Annotated[list, add_messages]  # 消息历史
-    user_intent: str                         # Supervisor识别的意图
-    active_agent: str                        # 当前执行的Agent
-    agent_outputs: Dict[str, Any]            # 各Agent的输出
+    intent: str                              # Supervisor 识别的意图
+    current_agent: str                       # 当前执行的 Agent
 
     # 业务状态
     cart: List[Dict[str, Any]]               # 购物车
@@ -19,8 +18,7 @@ class AgentState(TypedDict):
 
     # 上下文
     summary: str                             # 对话摘要
-    user_profile: str                        # 用户画像文本
-    rag_context: str                         # RAG检索上下文
+    user_identity: str                       # 用户身份标识（用户名等）
 
     # 输出
     response: str                            # 最终响应

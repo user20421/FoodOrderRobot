@@ -1,25 +1,27 @@
 """
-AI核心工具函数
+AI 核心工具函数
 """
-from typing import List, Dict, Any, Union
+from typing import List, Any
 from langchain_core.messages import (
     BaseMessage, HumanMessage, AIMessage, SystemMessage, ToolMessage
 )
 
 
-def extract_user_message(messages: List[Any]) -> str:
+def extract_last_user_message(messages: List[Any]) -> str:
     """
-    从消息列表中提取最后一条用户消息
-    兼容 dict 和 LangChain Message 对象
+    从消息列表中提取最后一条用户消息。
+    兼容 dict 和 LangChain Message 对象。
     """
-    for msg in reversed(messages):
+    for msg in reversed(messages or []):
         # LangChain Message 对象
         if isinstance(msg, HumanMessage):
-            return msg.content or ""
+            return str(msg.content or "")
+
         # dict 格式
         if isinstance(msg, dict):
-            if msg.get("role") == "user" or msg.get("type") == "human":
-                return msg.get("content", "")
+            role = msg.get("role", "") or msg.get("type", "")
+            if role in ("user", "human"):
+                return str(msg.get("content", ""))
     return ""
 
 

@@ -6,7 +6,7 @@ import os
 from typing import List, Optional
 from langchain_chroma import Chroma
 from langchain_core.documents import Document
-from langchain_community.embeddings.dashscope import DashScopeEmbeddings
+from langchain_community.embeddings import ZhipuAIEmbeddings
 
 from app.core.config import settings
 
@@ -19,12 +19,13 @@ def _get_embedding():
     global _embedding_function
     if _embedding_function is not None:
         return _embedding_function
-    api_key = settings.dashscope_api_key or os.environ.get("DASHSCOPE_API_KEY", "")
+    api_key = settings.zhipu_api_key or os.environ.get("ZHIPU_API_KEY", "")
     if not api_key:
-        raise ValueError("DASHSCOPE_API_KEY 未设置，无法初始化 Embedding")
-    _embedding_function = DashScopeEmbeddings(
+        raise ValueError("ZHIPU_API_KEY 未设置，无法初始化 Embedding")
+    _embedding_function = ZhipuAIEmbeddings(
         model=settings.embedding_model,
-        dashscope_api_key=api_key,
+        api_key=api_key,
+        dimensions=settings.embedding_dimensions,
     )
     return _embedding_function
 

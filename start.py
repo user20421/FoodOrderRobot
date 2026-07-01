@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-智能点餐机器人 - 一键启动脚本
+美味餐厅 - 一键启动脚本
 支持开发模式（前后端同时启动）和生产模式
 """
 import os
@@ -19,7 +19,7 @@ if sys.platform == "win32":
     sys.stderr.reconfigure(encoding="utf-8")
 
 # 配置
-BACKEND_PORT = 8000
+BACKEND_PORT = 8001
 FRONTEND_PORT = 5173
 BACKEND_URL = f"http://127.0.0.1:{BACKEND_PORT}"
 FRONTEND_URL = f"http://localhost:{FRONTEND_PORT}"
@@ -151,7 +151,8 @@ def kill_port(port):
             continue
         try:
             if system == "Windows":
-                subprocess.run(["taskkill", "/F", "/PID", str(pid)], capture_output=True)
+                # /T 同时终止子进程，避免 uvicorn --reload 留下孤儿进程占用端口
+                subprocess.run(["taskkill", "/F", "/T", "/PID", str(pid)], capture_output=True)
             else:
                 subprocess.run(["kill", "-9", str(pid)], capture_output=True)
             killed.append(pid)
@@ -219,7 +220,7 @@ def main():
     is_prod = "--prod" in args
 
     log("=" * 50)
-    log("智能点餐机器人 启动中...")
+    log("美味餐厅 启动中...")
     log("=" * 50)
 
     # 环境检查
@@ -281,6 +282,8 @@ def main():
             backend_cmd.append("--reload")
 
         backend_env = os.environ.copy()
+        # Windows 控制台输出使用 UTF-8，避免日志中文乱码
+        backend_env["PYTHONIOENCODING"] = "utf-8"
         # 生产模式告诉后端托管静态文件
         if is_prod:
             backend_env["SERVE_STATIC"] = "true"
@@ -309,6 +312,9 @@ def main():
 
         # 启动前端
         if not is_prod and has_node:
+            if not (frontend_dir / "node_modules").exists():
+                log("前端依赖未安装，请先执行: cd frontend && npm install", Colors.RED)
+                return
             log("启动 Vue 前端...")
             frontend_cmd = ["npm", "run", "dev"]
             frontend_proc = subprocess.Popen(
@@ -354,12 +360,20 @@ def main():
     finally:
         for name, proc in processes:
             try:
-                proc.terminate()
-                try:
-                    proc.wait(timeout=5)
-                except subprocess.TimeoutExpired:
-                    proc.kill()
-                    proc.wait(timeout=5)
+                if os.name == "nt":
+                    # Windows: 使用 taskkill /T 结束进程树，确保 uvicorn --reload 子进程也被清理
+                    subprocess.run(["taskkill", "/F", "/T", "/PID", str(proc.pid)], capture_output=True)
+                    try:
+                        proc.wait(timeout=5)
+                    except subprocess.TimeoutExpired:
+                        proc.kill()
+                else:
+                    proc.terminate()
+                    try:
+                        proc.wait(timeout=5)
+                    except subprocess.TimeoutExpired:
+                        proc.kill()
+                        proc.wait(timeout=5)
                 log(f"已停止 {name} (PID={proc.pid})")
             except Exception:
                 pass

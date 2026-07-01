@@ -24,7 +24,7 @@ _RATE_LIMIT_WINDOW = 60  # 秒
 _RATE_LIMIT_MAX = 20  # 每窗口最大请求数
 
 # 聊天处理超时（秒），避免 LLM/RAG 不稳定时长时间挂起
-_CHAT_TIMEOUT = 45
+_CHAT_TIMEOUT = 60
 
 
 async def _check_rate_limit(user_id: int):
@@ -62,6 +62,8 @@ async def chat(
     user_id = current_user.get("id", data.user_id)
     try:
         await _check_rate_limit(user_id)
+        # 图片搜菜涉及视觉模型 + LLM 匹配，耗时较长，单独放宽超时
+        timeout = _CHAT_TIMEOUT if not data.image_base64 else 100
         result = await asyncio.wait_for(
             process_chat(
                 db=db,
@@ -70,7 +72,7 @@ async def chat(
                 cart=data.cart or [],
                 image_base64=data.image_base64,
             ),
-            timeout=_CHAT_TIMEOUT,
+            timeout=timeout,
         )
         return ChatResponse(
             response=result["response"],
@@ -104,12 +106,17 @@ async def chat_stream(
     async def event_generator():
         try:
             # 1. 先完整执行多智能体流程（Tool Calling 不适合流式）
-            result = await process_chat(
-                db=db,
-                user_id=user_id,
-                message=data.message,
-                cart=data.cart or [],
-                image_base64=data.image_base64,
+            # 图片搜菜耗时较长，放宽超时
+            timeout = _CHAT_TIMEOUT if not data.image_base64 else 100
+            result = await asyncio.wait_for(
+                process_chat(
+                    db=db,
+                    user_id=user_id,
+                    message=data.message,
+                    cart=data.cart or [],
+                    image_base64=data.image_base64,
+                ),
+                timeout=timeout,
             )
             response_text = result.get("response", "")
             new_cart = result.get("cart", data.cart or [])

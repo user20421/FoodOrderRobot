@@ -53,10 +53,10 @@
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { useCartStore } from '../stores/cart'
-import { useAuthStore } from '../stores/auth'
-import api from '../api'
-import type { ChatResponse, CartItem } from '../types'
+import { useCartStore } from '@/features/cart/stores/cart.store'
+import { useAuthStore } from '@/features/auth/stores/auth.store'
+import { sendChatMessage } from '@/features/chat/api/chat.api'
+import type { CartItem } from '@/shared/types'
 
 const router = useRouter()
 const cartStore = useCartStore()
@@ -80,8 +80,8 @@ async function confirmOrder() {
   ordering.value = true
   try {
     const cart: CartItem[] = JSON.parse(JSON.stringify(cartStore.items || []))
-    const res = await api.post<ChatResponse>('/chat', {
-      user_id: authStore.userId,
+    const res = await sendChatMessage({
+      user_id: authStore.userId ?? 0,
       message: '确认下单',
       cart,
     })

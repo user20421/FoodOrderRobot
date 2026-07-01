@@ -63,7 +63,7 @@ import { ref, onMounted, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { fetchAdminOrders, exportAdminOrders } from '@/modules/admin/api/admin.api'
 import { formatDate } from '@/shared/utils/date'
-import { downloadTxt } from '@/shared/utils/download'
+import { downloadPdf } from '@/shared/utils/download'
 import { statusType, statusText } from '@/features/orders/utils/status'
 import type { Order } from '@/shared/types'
 
@@ -105,7 +105,7 @@ async function exportAllOrders() {
   exporting.value = true
   try {
     const res = await exportAdminOrders()
-    downloadTxt(res.data, 'all_orders.txt')
+    downloadPdf(res.data, 'all_orders.pdf')
     ElMessage.success('全部订单导出成功')
   } catch (e) {
     ElMessage.error('导出失败')

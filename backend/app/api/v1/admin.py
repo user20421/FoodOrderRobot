@@ -2,8 +2,9 @@
 商家管理路由
 保持与原后端API格式兼容
 """
+import io
 from fastapi import APIRouter, Depends, HTTPException
-from fastapi.responses import PlainTextResponse
+from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
@@ -20,7 +21,7 @@ from app.services.order_service import (
     get_pending_orders,
     complete_order,
 )
-from app.utils.formatters import export_order_text
+from app.utils.pdf_export import build_orders_pdf
 
 router = APIRouter()
 
@@ -140,10 +141,14 @@ async def admin_export_orders(
     current_user: dict = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
-    """商家导出全部订单"""
+    """商家导出全部订单为 PDF"""
     orders, _ = await get_all_orders_paginated(db, page=1, page_size=1000)
-    lines = [export_order_text(o.model_dump()) for o in orders]
-    return PlainTextResponse(
-        content="\n\n".join(lines),
-        headers={"Content-Disposition": "attachment; filename=all_orders.txt"},
+    pdf_bytes = build_orders_pdf(
+        [o.model_dump() for o in orders],
+        title="商家订单列表",
+    )
+    return StreamingResponse(
+        io.BytesIO(pdf_bytes),
+        media_type="application/pdf",
+        headers={"Content-Disposition": "attachment; filename=all_orders.pdf"},
     )

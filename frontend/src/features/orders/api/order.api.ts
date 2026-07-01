@@ -23,12 +23,12 @@ export function fetchAllOrders(userId: number) {
 }
 
 export function exportOrder(orderId: number) {
-  return api.get<string>(`/orders/${orderId}/export`, { responseType: 'text' })
+  return api.get<Blob>(`/orders/${orderId}/export`, { responseType: 'blob' })
 }
 
 export function exportAllOrders(params?: { user_id?: number; start_date?: string; end_date?: string }) {
-  return api.get<string>('/orders/export', {
+  return api.get<Blob>('/orders/export', {
     params,
-    responseType: 'text',
+    responseType: 'blob',
   })
 }

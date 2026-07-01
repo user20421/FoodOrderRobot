@@ -67,8 +67,8 @@ export function completeOrder(orderId: number) {
 }
 
 export function exportAdminOrders(params?: { start_date?: string; end_date?: string }) {
-  return api.get<string>('/admin/orders/export', {
+  return api.get<Blob>('/admin/orders/export', {
     params,
-    responseType: 'text',
+    responseType: 'blob',
   })
 }

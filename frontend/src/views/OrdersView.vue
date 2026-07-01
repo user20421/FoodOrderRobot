@@ -73,7 +73,7 @@ import { ElMessage } from 'element-plus'
 import { useAuthStore } from '@/features/auth/stores/auth.store'
 import { fetchMyOrders, exportOrder as exportOrderApi, exportAllOrders as exportAllOrdersApi } from '@/features/orders/api/order.api'
 import { formatDate } from '@/shared/utils/date'
-import { downloadTxt } from '@/shared/utils/download'
+import { downloadPdf } from '@/shared/utils/download'
 import { statusType, statusText } from '@/features/orders/utils/status'
 import type { Order } from '@/shared/types'
 
@@ -116,7 +116,7 @@ function handlePageChange(newPage: number) {
 async function exportOrder(orderId: number) {
   try {
     const res = await exportOrderApi(orderId)
-    downloadTxt(res.data, `order_${orderId}.txt`)
+    downloadPdf(res.data, `order_${orderId}.pdf`)
     ElMessage.success('订单导出成功')
   } catch (e) {
     ElMessage.error('导出失败')
@@ -129,7 +129,7 @@ async function exportAllOrders() {
   try {
     const userId = authStore.userId ?? 0
     const res = await exportAllOrdersApi({ user_id: userId })
-    downloadTxt(res.data, `orders_user_${userId}.txt`)
+    downloadPdf(res.data, `orders_user_${userId}.pdf`)
     ElMessage.success('全部订单导出成功')
   } catch (e) {
     ElMessage.error('导出失败')

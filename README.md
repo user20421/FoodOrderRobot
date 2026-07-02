@@ -432,8 +432,4 @@ lsof -ti:8001 | xargs kill -9
 
 `start.py` 已自动设置 `chcp 65001` 与 Python UTF-8 编码。若仍有乱码，请确保终端字体支持中文（如 Microsoft YaHei、Consolas）。
 
----
 
-## License
-
-[MIT](LICENSE)

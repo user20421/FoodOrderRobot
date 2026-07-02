@@ -10,6 +10,7 @@ from typing import Optional
 from langchain_community.chat_models import ChatZhipuAI
 from langchain_core.messages import HumanMessage
 
+from app.ai.agents.prompts import PromptBuilder
 from app.core.config import settings
 from app.core.logging_config import get_logger
 
@@ -42,7 +43,7 @@ async def analyze_dish_image(image_bytes: bytes, mime_type: str = "image/jpeg") 
 
         message = HumanMessage(content=[
             {"type": "image_url", "image_url": {"url": data_uri}},
-            {"type": "text", "text": "请简要描述这张图片里的菜品。只需说明：主要食材、颜色、外观特征、可能的烹饪方式。控制在50字以内，不要多余解释。"}
+            {"type": "text", "text": PromptBuilder.build_vision_prompt()}
         ])
 
         # ChatZhipuAI 的 ainvoke 是异步的

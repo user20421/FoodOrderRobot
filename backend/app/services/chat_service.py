@@ -2,13 +2,15 @@
 聊天服务
 整合多智能体、记忆管理
 """
-from sqlalchemy.ext.asyncio import AsyncSession
 from typing import Optional
+
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.logging_config import get_logger
 from app.ai.graph.builder import get_agent_graph
 from app.ai.memory.manager import MemoryManager
 from app.ai.routing import try_fast_path
+from app.ai.routing.llm_classifier import classify_message, generate_direct_reply
 from app.repositories.chat_repo import chat_repo
 from app.repositories.user_repo import user_repo
 from app.services.image_search_service import decode_image_base64, search_dishes_by_image
@@ -42,6 +44,14 @@ async def _get_user_identity(db: AsyncSession, user_id: int) -> str:
     except Exception:
         pass
     return ""
+
+
+async def _direct_llm_reply(message: str, user_identity: str, summary: str = "") -> str:
+    """
+    对问候/闲聊/简单 FAQ 直接调用 LLM（不绑定任何工具）。
+    智谱非思考模型在 tool-bound ReAct 循环中容易超时，直接调用可快速返回。
+    """
+    return await generate_direct_reply(message, user_identity=user_identity, history_summary=summary)
 
 
 async def _format_image_search_response(result: dict) -> str:
@@ -136,14 +146,31 @@ async def _process_chat_core(
         await chat_repo.save_message(db, user_id, "assistant", fast_result["response"], cart_snapshot=fast_result["cart"])
         return fast_result
 
+    # 获取用户身份信息（用户名等），不再注入忌口/饮食限制等用户画像，避免干扰正常下单
+    user_identity = await _get_user_identity(db, user_id)
+
     memory_manager = get_memory_manager()
 
     # 加载对话上下文
     history_messages, summary = await memory_manager.get_conversation_context(user_id)
 
-    # 获取用户身份信息（用户名等），不再注入忌口/饮食限制等用户画像，避免干扰正常下单
-    user_identity = await _get_user_identity(db, user_id)
+    # Layer 2：轻量 LLM 分类器。对问候/闲聊/简单 FAQ 直接调用 LLM，不进入 Agent 工具循环。
+    classification = await classify_message(message, history_summary=summary)
+    if classification and classification.get("route") in ("greeting", "faq_direct"):
+        try:
+            response = await _direct_llm_reply(message, user_identity, summary=summary)
+            await chat_repo.save_message(db, user_id, "user", message)
+            await chat_repo.save_message(db, user_id, "assistant", response, cart_snapshot=cart)
+            return {
+                "response": response,
+                "cart": cart,
+                "intent": "service",
+                "agent": "direct_llm",
+            }
+        except Exception as e:
+            logger.warning(f"[ChatService] 直接 LLM 回复失败，降级到 Agent: {e}")
 
+    # Layer 3：多智能体图（需要工具/复杂推理）
     # 构建Agent输入
     agent_input = {
         "messages": history_messages + [{"role": "user", "content": message}],

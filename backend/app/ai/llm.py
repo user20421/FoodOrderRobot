@@ -16,6 +16,9 @@ logger = get_logger(__name__)
 _llm_instances: Dict[tuple, ChatZhipuAI] = {}
 _embedding_instance: Optional[ZhipuAIEmbeddings] = None
 
+# 本项目统一使用智谱 AI 非思考模式，以降低简单直接调用的响应延迟
+THINKING_DISABLED = {"type": "disabled"}
+
 
 class _MockLLM:
     """Mock LLM，用于 API Key 未设置时的优雅降级"""
@@ -43,8 +46,12 @@ def get_llm(temperature: float = 0.1):
             model=settings.chat_model,
             api_key=api_key,
             temperature=temperature,
+            thinking=THINKING_DISABLED,
         )
-        logger.info(f"LLM 初始化完成: {settings.chat_model}, temperature={temperature}")
+        logger.info(
+            f"LLM 初始化完成: {settings.chat_model}, temperature={temperature}, "
+            f"thinking={THINKING_DISABLED['type']}"
+        )
 
     return _llm_instances[cache_key]
 
@@ -82,6 +89,7 @@ async def check_llm_health() -> dict:
         resp = client.chat.completions.create(
             model=settings.chat_model,
             messages=[{"role": "user", "content": "hi"}],
+            thinking=THINKING_DISABLED,
         )
         if getattr(resp, "choices", None):
             return {"ok": True, "model": settings.chat_model}

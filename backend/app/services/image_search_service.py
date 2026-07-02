@@ -13,6 +13,7 @@ from pydantic import BaseModel, Field
 
 from app.ai.vision import analyze_dish_image
 from app.ai.llm import get_llm
+from app.ai.agents.prompts import PromptBuilder
 from app.services import menu_service
 from app.core.logging_config import get_logger
 
@@ -49,30 +50,7 @@ class ImageSearchResult(BaseModel):
     matches: List[DishMatch] = Field(default_factory=list)
 
 
-_IMAGE_MATCH_PROMPT = """你是一位菜品识别专家。用户上传了一张菜品图片，多模态模型已分析出以下描述：
-
-【图片描述】
-{description}
-
-【餐厅菜单】
-{menu_text}
-
-请根据图片描述，从菜单中找出最可能匹配的 **最多3道** 菜品。
-匹配规则：
-1. 必须根据图片实际内容判断，不要凭空猜测
-2. 如果图片明显不是菜品（如风景、人物、文字截图、动物、物品等），直接返回空列表
-3. 如果图片是菜品但菜单中没有相似的，也返回空列表
-4. 只输出确定有较高匹配度的菜品，宁可少不要错
-5. 菜品名称必须严格来自上方菜单列表，禁止编造菜单里没有的菜名
-
-请严格按以下JSON格式输出，不要有任何其他文字：
-{{
-  "found": true/false,
-  "matches": [
-    {{"name": "菜品名称", "reason": "简短匹配理由（15字内）", "confidence": 0.95}}
-  ]
-}}
-"""
+# 图片匹配提示词已从 prompts/services/image_search.md 迁移，由 PromptBuilder 加载。
 
 
 def _detect_mime_type(image_bytes: bytes, declared_mime: str) -> str:
@@ -164,7 +142,7 @@ async def match_dishes_with_llm(description: str, menu_items: List[Dict]) -> Lis
         return []
 
     menu_text = _build_menu_text(menu_items)
-    prompt = _IMAGE_MATCH_PROMPT.format(description=description, menu_text=menu_text)
+    prompt = PromptBuilder.build_image_search_prompt(description=description, menu_text=menu_text)
 
     try:
         llm = get_llm(temperature=0.1)

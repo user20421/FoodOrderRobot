@@ -1,8 +1,9 @@
 """
 RAG 轻量检索器
-Dense Retrieval + Sparse Retrieval (BM25)，单查询，无重写/扩展/重排序。
+Dense Retrieval + Sparse Retrieval (BM25)，支持查询改写与按意图的 metadata 过滤。
 """
-from typing import List, Tuple, Dict, Any
+import re
+from typing import List, Tuple, Dict, Any, Optional
 from langchain_core.documents import Document
 from rank_bm25 import BM25Okapi
 
@@ -13,6 +14,68 @@ from app.core.logging_config import get_logger
 logger = get_logger(__name__)
 
 
+# ---------------------------------------------------------------------------
+# 查询改写与意图映射
+# ---------------------------------------------------------------------------
+
+_INTENT_COLLECTION_MAP = {
+    "inquiry": ["menu_docs", "faq_docs"],
+    "recommend": ["menu_docs", "faq_docs"],
+    "service": ["faq_docs", "store_docs"],
+}
+
+_INTENT_KEYWORDS = {
+    "menu": ["菜", "鱼", "肉", "鸡", "虾", "豆腐", "辣度", "价格", "多少钱", "菜单"],
+    "store": ["营业", "配送", "会员", "预订", "电话", "地址", "外卖", "优惠", "政策", "过敏"],
+}
+
+
+def _infer_intent(query: str) -> str:
+    """根据关键词推断意图，用于选择检索集合"""
+    text = query.lower()
+    menu_score = sum(1 for kw in _INTENT_KEYWORDS["menu"] if kw in text)
+    store_score = sum(1 for kw in _INTENT_KEYWORDS["store"] if kw in text)
+    if menu_score > store_score:
+        return "inquiry"
+    if store_score > menu_score:
+        return "service"
+    return "service"
+
+
+def _rewrite_query(query: str) -> str:
+    """
+    轻量查询改写：将口语化问题补充关键词，便于向量/BM25 检索。
+    不调用 LLM，避免增加延迟。
+    """
+    text = query.strip()
+
+    # 辣度相关
+    if re.search(r"最辣|辣度最高|最辣的菜", text):
+        return f"{text} 辣度5级 特辣"
+    if re.search(r"不辣|不吃辣|微辣", text):
+        return f"{text} 辣度0级 不辣 清淡"
+
+    # 推荐相关
+    if re.search(r"下饭|下饭菜", text):
+        return f"{text} 推荐 下饭"
+    if re.search(r"宴请|聚餐|大菜", text):
+        return f"{text} 推荐 宴请 大菜"
+    if re.search(r"小朋友|小孩|老人", text):
+        return f"{text} 推荐 清淡 不辣"
+
+    # 食材相关
+    if re.search(r"海鲜|鱼|虾|贝|蟹", text):
+        return f"{text} 海鲜"
+    if re.search(r"素菜|蔬菜|清淡", text):
+        return f"{text} 素菜 清淡"
+
+    return text
+
+
+# ---------------------------------------------------------------------------
+# 混合检索器
+# ---------------------------------------------------------------------------
+
 class HybridRetriever:
     """混合检索器：向量检索 + BM25"""
 
@@ -22,7 +85,7 @@ class HybridRetriever:
         self._bm25_index: Dict[str, BM25Okapi] = {}
         self._bm25_docs: Dict[str, List[Document]] = {}
 
-    def _build_bm25(self, collection_name: str) -> BM25Okapi:
+    def _build_bm25(self, collection_name: str) -> Optional[BM25Okapi]:
         """构建BM25索引"""
         if collection_name in self._bm25_index:
             return self._bm25_index[collection_name]
@@ -102,11 +165,18 @@ class HybridRetriever:
         self,
         query: str,
         k: int = None,
+        intent: str = None,
     ) -> List[Tuple[Document, float]]:
-        """在所有知识库集合中检索并去重。"""
+        """
+        在所有知识库集合中检索并去重。
+        根据 intent 选择优先检索的集合。
+        """
         k = k or settings.rag_top_k
+        intent = intent or _infer_intent(query)
+        collections = _INTENT_COLLECTION_MAP.get(intent, self.DEFAULT_COLLECTIONS)
+
         all_results = []
-        for collection in self.DEFAULT_COLLECTIONS:
+        for collection in collections:
             try:
                 results = self.search(collection, query, k=k)
                 all_results.extend(results)
@@ -155,13 +225,18 @@ class HybridRetriever:
 hybrid_retriever = HybridRetriever()
 
 
-async def retrieve_knowledge(question: str) -> str:
+# ---------------------------------------------------------------------------
+# RAG 入口
+# ---------------------------------------------------------------------------
+
+
+async def retrieve_knowledge(question: str, intent: str = None) -> str:
     """
-    轻量 RAG 入口：单查询混合检索，失败时返回空字符串。
-    不调用 LLM 进行查询重写/扩展/重排序。
+    RAG 入口：查询改写 + 按意图选择集合 + 混合检索。
     """
     try:
-        results = hybrid_retriever.search_all_collections(question)
+        rewritten = _rewrite_query(question)
+        results = hybrid_retriever.search_all_collections(rewritten, intent=intent)
         if not results:
             return "未找到相关知识。"
         lines = []

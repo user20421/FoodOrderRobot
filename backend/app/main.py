@@ -56,6 +56,11 @@ async def lifespan(app: FastAPI):
     # 连接 Redis
     await init_redis()
 
+    # Markdown 知识库校验
+    from app.core.content_loader import verify_knowledge_migration
+    knowledge_stats = verify_knowledge_migration()
+    logger.info(f"[Knowledge] 知识库统计: {knowledge_stats}")
+
     # LLM 可用性自检
     from app.ai.llm import check_llm_health
     llm_health = await check_llm_health()

@@ -24,6 +24,8 @@ share/python-wheels/
 .installed.cfg
 *.egg
 MANIFEST
+# Environment variables (all levels)
+**/.env
 .env
 .venv
 env/
@@ -32,7 +34,13 @@ ENV/
 env.bak/
 venv.bak/
 .pytest_cache/
+**/.pytest_cache/
 .mypy_cache/
+.coverage
+htmlcov/
+coverage.xml
+.tox/
+.nox/
 .dmypy.json
 dmypy.json
 
@@ -89,3 +97,16 @@ frontend/frontend_err.log
 
 # Local backups
 backups/
+
+# Seed / script artifacts
+backend/app/seed/
+backend/scripts/
+
+# Database dumps
+*.dump
+*.sql
+
+# Temporary files
+*.tmp
+*.temp
+~$*

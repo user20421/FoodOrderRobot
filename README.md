@@ -1,6 +1,6 @@
 # 点餐机器人 · 美味餐厅
 
-[![Python](https://img.shields.io/badge/Python-3.10%2B-blue)](https://www.python.org/)
+[![Python](https://img.shields.io/badge/Python-3.11%2B-blue)](https://www.python.org/)
 [![Vue.js](https://img.shields.io/badge/Vue-3.x-green)](https://vuejs.org/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.110%2B-009688)](https://fastapi.tiangolo.com/)
 [![LangGraph](https://img.shields.io/badge/LangGraph-Handoff-orange)](https://langchain-ai.github.io/langgraph/)
@@ -71,6 +71,7 @@
 
 - 所有工具基于 `ToolContext` 实现，直接调用 `services/` 层，操作真实数据库状态。
 - 工具白名单 `AGENT_TOOL_MAP` 控制每个 Agent 可见的工具，避免越权。
+- 提示词与知识库全部 Markdown 化，集中存放在 `backend/prompts/` 与 `backend/knowledge/`，由 `content_loader.py` 统一加载。
 
 ### 快速通道（Fast Router）
 
@@ -83,6 +84,10 @@
 | “推荐几个菜” | 基于规则/历史推荐 |
 | “我的订单 / 最近订单” | 直接查询订单 |
 | “购物车 / 清空购物车” | 查看或清空购物车 |
+| “来一份麻婆豆腐，再来两份毛血旺” | 单条消息多道菜加购 |
+
+- 对“点餐 + 咨询/服务”的混合意图，快速通道主动让行，交给 Agent 统一处理，避免只回应一半。
+- 对“可以给我来一杯可乐吗？”这类带语气词的纯点餐请求，不会被误判为混合意图。
 
 未命中时，再走 Handoff LLM 通道。
 
@@ -197,21 +202,24 @@ python start.py --prod
 ├── backend/                  # FastAPI 后端
 │   ├── app/
 │   │   ├── main.py           # 应用入口
-│   │   ├── core/             # 配置、数据库、MongoDB、Redis、Chroma、日志
+│   │   ├── core/             # 配置、数据库、MongoDB、Redis、Chroma、日志、内容加载器
+│   │   │   └── content_loader.py  # Markdown 知识库 / 提示词统一加载
 │   │   ├── models/           # SQLAlchemy ORM 模型
 │   │   ├── schemas/          # Pydantic 数据模型
 │   │   ├── repositories/     # 数据访问层
 │   │   ├── services/         # 业务逻辑层
 │   │   ├── api/              # API 路由
 │   │   ├── ai/               # AI 核心层
-│   │   │   ├── agents/       # Agent 节点（handoff）与提示词
+│   │   │   ├── agents/       # Agent 节点（handoff）
 │   │   │   ├── graph/        # LangGraph 工作流构建
 │   │   │   ├── rag/          # 轻量 RAG 检索
 │   │   │   ├── memory/       # 记忆管理
-│   │   │   ├── routing/      # 快速通道路由
+│   │   │   ├── routing/      # 快速通道路由 + LLM 意图分类器
 │   │   │   └── tools/        # ToolContext 工具实现与注册
 │   │   └── utils/            # 工具函数
-│   ├── data/                 # 模拟数据（菜单、FAQ、店铺文档）
+│   ├── knowledge/            # Markdown 化知识库（菜单、FAQ、店铺文档）
+│   ├── prompts/              # Markdown 化提示词（Supervisor / Agent / Service）
+│   ├── data/                 # 模拟数据与初始化脚本
 │   ├── tests/                # 测试用例
 │   └── requirements.txt
 │
@@ -378,9 +386,16 @@ uvicorn app.main:app --host 0.0.0.0 --port 8001
 2. 在 `backend/app/ai/tools/registry.py` 的 `build_tool_definitions` 中注册工具。
 3. 将工具名加入 `AGENT_TOOL_MAP` 对应 Agent 的白名单。
 
-### 新增菜品
+### 新增菜品 / FAQ / 店铺文档
 
-编辑 `backend/data/menu_data.py`，添加菜品数据后重启服务即可自动初始化。
+1. 编辑 `backend/knowledge/menu/` 下的 Markdown 文件添加菜品。
+2. 编辑 `backend/knowledge/faq/` 下的 Markdown 文件添加 FAQ。
+3. 编辑 `backend/knowledge/store/` 下的 Markdown 文件添加店铺信息。
+4. 重启服务后 `content_loader.py` 会自动重新加载并构建 RAG 索引。
+
+### 修改提示词
+
+编辑 `backend/prompts/` 下对应的 Markdown 文件（如 `supervisor.md`），无需修改代码即可生效。
 
 ---
 

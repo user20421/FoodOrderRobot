@@ -8,61 +8,13 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 from app.core.chroma_client import chroma_store
 from app.core.logging_config import get_logger
-from data.menu_data import MENU_ITEMS
-from data.faq_data import FAQ_DATA
-from data.store_docs import STORE_DOCS
+from app.core.content_loader import (
+    build_menu_documents as _build_menu_documents,
+    build_faq_documents as _build_faq_documents,
+    build_store_documents as _build_store_documents,
+)
 
 logger = get_logger(__name__)
-
-
-def _build_menu_documents() -> List[Document]:
-    """构建菜单文档"""
-    documents = []
-    for item in MENU_ITEMS:
-        content = (
-            f"菜品名称：{item['name']}\n"
-            f"描述：{item['description']}\n"
-            f"价格：{item['price']:.0f}元\n"
-            f"辣度：{item['spicy_level']}级（0-5）\n"
-            f"分类：{item['category']}\n"
-            f"标签：{item['tags']}\n"
-            f"库存：{item['stock']}份"
-        )
-        documents.append(Document(
-            page_content=content,
-            metadata={
-                "source": "menu",
-                "name": item["name"],
-                "category": item["category"],
-                "spicy_level": item["spicy_level"],
-                "price": item["price"],
-            }
-        ))
-    return documents
-
-
-def _build_faq_documents() -> List[Document]:
-    """构建FAQ文档"""
-    documents = []
-    for faq in FAQ_DATA:
-        content = f"问题：{faq['question']}\n回答：{faq['answer']}"
-        documents.append(Document(
-            page_content=content,
-            metadata={"source": "faq"}
-        ))
-    return documents
-
-
-def _build_store_documents() -> List[Document]:
-    """构建店铺文档"""
-    documents = []
-    for doc in STORE_DOCS:
-        content = f"{doc['title']}\n\n{doc['content']}"
-        documents.append(Document(
-            page_content=content,
-            metadata={"source": "store", "title": doc["title"]}
-        ))
-    return documents
 
 
 def _split_documents(docs: List[Document]) -> List[Document]:

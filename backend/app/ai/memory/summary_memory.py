@@ -9,7 +9,7 @@ from langchain_core.messages import HumanMessage
 from app.ai.llm import get_llm
 from app.core.mongodb import is_mongodb_available, is_beanie_initialized
 from app.core.logging_config import get_logger
-from app.core.config import settings
+from app.ai.agents.prompts import PromptBuilder
 from app.documents.summary import ConversationSummaryDocument
 
 logger = get_logger(__name__)
@@ -69,14 +69,7 @@ class SummaryMemory:
         """使用LLM生成对话摘要"""
         try:
             llm = self._get_llm()
-            prompt = (
-                "请对以下客服对话进行简短总结，保留用户的关键意图、已确认的信息和未完成的请求。\n"
-                "总结要简洁，不超过150字，不要包含格式标记。\n\n"
-            )
-            if previous_summary:
-                prompt += f"【此前摘要】\n{previous_summary}\n\n"
-            prompt += f"【新对话】\n{dialogue_text}\n\n【总结】"
-
+            prompt = PromptBuilder.build_summary_prompt(dialogue_text, previous_summary)
             response = await llm.ainvoke([HumanMessage(content=prompt)])
             return response.content.strip()
         except Exception as e:

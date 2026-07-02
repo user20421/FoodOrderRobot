@@ -12,7 +12,7 @@ from app.models.menu import MenuItem
 from app.schemas.menu import MenuItemCreate, MenuItemUpdate, MenuItemOut, MenuCategoryOut
 from app.core.redis import get_redis, is_redis_available
 from app.core.logging_config import get_logger
-from data.menu_data import MENU_ITEMS, MENU_CATEGORIES
+from app.core.content_loader import get_menu_items as _load_menu_items, get_menu_categories as _load_menu_categories
 
 logger = get_logger(__name__)
 
@@ -59,14 +59,14 @@ async def _delayed_cache_delete(key: str, delay_seconds: float):
 async def init_menu_data(db: AsyncSession):
     """初始化菜单数据"""
     # 初始化分类
-    for cat_data in MENU_CATEGORIES:
+    for cat_data in _load_menu_categories():
         existing = await menu_category_repo.get_by_name(db, cat_data["name"])
         if not existing:
             await menu_category_repo.create(db, cat_data)
 
     # 初始化菜品
     count = 0
-    for item_data in MENU_ITEMS:
+    for item_data in _load_menu_items():
         existing = await menu_item_repo.get_by_name(db, item_data["name"])
         if not existing:
             await menu_item_repo.create(db, item_data)

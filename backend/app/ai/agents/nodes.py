@@ -20,14 +20,7 @@ from langchain_core.messages import (
 from langgraph.types import Command
 
 from app.ai.llm import get_llm
-from app.ai.agents.prompts import (
-    SUPERVISOR_SYSTEM_PROMPT,
-    ORDER_AGENT_SYSTEM_PROMPT,
-    INQUIRY_AGENT_SYSTEM_PROMPT,
-    RECOMMEND_AGENT_SYSTEM_PROMPT,
-    SERVICE_AGENT_SYSTEM_PROMPT,
-    build_dynamic_context,
-)
+from app.ai.agents.prompts import PromptBuilder, build_dynamic_context
 from app.ai.tools import ToolContext, build_tool_definitions, filter_tools_for_agent
 from app.ai.rag.retriever import retrieve_knowledge
 from app.ai.utils import extract_last_user_message
@@ -56,24 +49,11 @@ def _agent_messages(
     state: Dict[str, Any],
     system_prompt: str,
     agent_name: str,
-    rag_context: str = "",
 ) -> List[SystemMessage | HumanMessage | AIMessage | ToolMessage]:
     """构建注入业务上下文的 system + 历史消息列表。"""
-    dynamic = build_dynamic_context(
-        cart=state.get("cart") or [],
-        user_id=state.get("user_id"),
-        summary=state.get("summary") or "",
-        user_identity=state.get("user_identity") or "",
-    )
-    context_parts = [dynamic]
-    if rag_context:
-        context_parts.append(f"## 知识库检索结果\n{rag_context}")
-    context_parts.append(f"## 当前负责智能体\n{agent_name}")
-
     system_text = (
         system_prompt
-        + "\n\n## 当前动态上下文\n"
-        + "\n\n".join(context_parts)
+        + f"\n\n## 当前负责智能体\n{agent_name}"
     )
 
     messages: List[Any] = [SystemMessage(content=system_text)]
@@ -109,7 +89,6 @@ def _build_tool_result_message(tool_call_id: str, content: str) -> ToolMessage:
 async def _run_agent_loop(
     state: Dict[str, Any],
     config: Optional[RunnableConfig],
-    system_prompt: str,
     agent_name: str,
     allowed_agent_names: Optional[List[str]] = None,
 ) -> Dict[str, Any] | Command:
@@ -124,15 +103,26 @@ async def _run_agent_loop(
     last_user_msg = extract_last_user_message(state.get("messages"))
     if last_user_msg and agent_name in ("service", "inquiry") and _should_use_rag(last_user_msg):
         try:
-            rag_context = await retrieve_knowledge(last_user_msg)
+            rag_context = await retrieve_knowledge(last_user_msg, intent=agent_name)
         except Exception as e:
             logger.warning(f"[Agent] RAG 检索失败: {e}")
 
-    messages = _agent_messages(state, system_prompt, agent_name, rag_context=rag_context)
+    system_prompt = PromptBuilder.build_agent_prompt(
+        agent_name=agent_name,
+        cart=state.get("cart") or [],
+        user_id=state.get("user_id") or 0,
+        summary=state.get("summary") or "",
+        user_identity=state.get("user_identity") or "",
+        rag_context=rag_context,
+    )
+    messages = _agent_messages(state, system_prompt, agent_name)
     ctx = ToolContext(state, config)
     all_tools = build_tool_definitions(ctx)
     tools = filter_tools_for_agent(all_tools, agent_name)
     llm = get_llm(temperature=0.1).bind_tools(tools)
+
+    # 非思考模式下限制单轮并行工具调用数量，避免无意义循环
+    max_parallel_tools = 2
 
     added_messages: List[Any] = []
     executed_tools: set = set()  # 记录已执行过的 (name, args_json) 防止重复调用
@@ -161,7 +151,11 @@ async def _run_agent_loop(
 
         # 处理工具调用
         added_messages.append(response)
-        for tc in _parse_tool_calls(response):
+        tcs = _parse_tool_calls(response)
+        if len(tcs) > max_parallel_tools:
+            tcs = tcs[:max_parallel_tools]
+            logger.warning(f"[Agent {agent_name}] 单轮工具调用超过 {max_parallel_tools} 个，已截断")
+        for tc in tcs:
             tool = next((t for t in tools if t.name == tc["name"]), None)
             if not tool:
                 result = f"工具 {tc['name']} 不可用。"
@@ -227,7 +221,7 @@ async def supervisor_node(state: Dict[str, Any], config: Optional[RunnableConfig
 
     llm = get_llm(temperature=0.0)
     prompt = [
-        SystemMessage(content=SUPERVISOR_SYSTEM_PROMPT),
+        SystemMessage(content=PromptBuilder.build_supervisor_prompt(last_user_msg or "你好")),
         HumanMessage(content=last_user_msg or "你好"),
     ]
     try:
@@ -260,16 +254,16 @@ async def supervisor_node(state: Dict[str, Any], config: Optional[RunnableConfig
 
 
 async def order_agent(state: Dict[str, Any], config: Optional[RunnableConfig] = None) -> Dict[str, Any] | Command:
-    return await _run_agent_loop(state, config, ORDER_AGENT_SYSTEM_PROMPT, "order")
+    return await _run_agent_loop(state, config, "order")
 
 
 async def inquiry_agent(state: Dict[str, Any], config: Optional[RunnableConfig] = None) -> Dict[str, Any] | Command:
-    return await _run_agent_loop(state, config, INQUIRY_AGENT_SYSTEM_PROMPT, "inquiry")
+    return await _run_agent_loop(state, config, "inquiry")
 
 
 async def recommend_agent(state: Dict[str, Any], config: Optional[RunnableConfig] = None) -> Dict[str, Any] | Command:
-    return await _run_agent_loop(state, config, RECOMMEND_AGENT_SYSTEM_PROMPT, "recommend")
+    return await _run_agent_loop(state, config, "recommend")
 
 
 async def service_agent(state: Dict[str, Any], config: Optional[RunnableConfig] = None) -> Dict[str, Any] | Command:
-    return await _run_agent_loop(state, config, SERVICE_AGENT_SYSTEM_PROMPT, "service")
+    return await _run_agent_loop(state, config, "service")

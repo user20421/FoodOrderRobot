@@ -1,3 +1,12 @@
+[project]
+name = "shuxiangge-bot"
+version = "3.0.0"
+description = "基于 FastAPI + LangGraph 多智能体架构 + 智谱 AI 的美味餐厅点餐机器人"
+requires-python = ">=3.10"
+
+[tool.setuptools]
+packages = ["app"]
+
 [tool.ruff]
 line-length = 120
 target-version = "py310"

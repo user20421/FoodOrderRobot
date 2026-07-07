@@ -102,6 +102,13 @@ export interface ChatResponse {
   agent?: string | null
 }
 
+export interface ChatStreamEvent {
+  type: 'text' | 'done' | 'error'
+  content?: string
+  cart?: CartItem[]
+  message?: string
+}
+
 export interface StartupTimeResponse {
   startup_time: string
 }

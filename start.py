@@ -24,6 +24,27 @@ FRONTEND_PORT = 5173
 BACKEND_URL = f"http://127.0.0.1:{BACKEND_PORT}"
 FRONTEND_URL = f"http://localhost:{FRONTEND_PORT}"
 
+# Docker 容器配置
+DOCKER_CONTAINERS = [
+    {
+        "name": "mongo-server",
+        "image": "mongo:latest",
+        "ports": {"27017": "27017"},
+    },
+    {
+        "name": "redis-server",
+        "image": "redis:latest",
+        "ports": {"6379": "6379"},
+    },
+    {
+        "name": "mysql-server",
+        "image": "mysql:latest",
+        "ports": {"3306": "3306"},
+        "env": {"MYSQL_ROOT_PASSWORD": "123456", "MYSQL_DATABASE": "restaurant"},
+    },
+]
+
+
 # 颜色输出
 class Colors:
     GREEN = "\033[92m"
@@ -57,6 +78,126 @@ def check_node():
         pass
     log("未检测到 Node.js，前端将无法启动", Colors.YELLOW)
     return False
+
+
+def docker_available():
+    """检查 Docker 是否可用"""
+    try:
+        result = subprocess.run(
+            ["docker", "info"],
+            capture_output=True, text=True, shell=False
+        )
+        return result.returncode == 0
+    except FileNotFoundError:
+        return False
+
+
+def container_exists(name):
+    """检查指定名称的容器是否已存在"""
+    try:
+        result = subprocess.run(
+            ["docker", "ps", "-a", "--filter", f"name=^{name}$", "--format", "{{.Names}}"],
+            capture_output=True, text=True, shell=False
+        )
+        return result.stdout.strip() == name
+    except Exception:
+        return False
+
+
+def container_running(name):
+    """检查指定名称的容器是否正在运行"""
+    try:
+        result = subprocess.run(
+            ["docker", "ps", "--filter", f"name=^{name}$", "--format", "{{.Names}}"],
+            capture_output=True, text=True, shell=False
+        )
+        return result.stdout.strip() == name
+    except Exception:
+        return False
+
+
+def start_docker_container(cfg):
+    """启动单个 Docker 容器；若不存在则创建并运行"""
+    name = cfg["name"]
+    image = cfg["image"]
+
+    if container_running(name):
+        log(f"Docker 容器 {name} 已在运行")
+        return True
+
+    if container_exists(name):
+        log(f"启动 Docker 容器 {name}...")
+        result = subprocess.run(
+            ["docker", "start", name],
+            capture_output=True, text=True, shell=False
+        )
+        if result.returncode == 0:
+            log(f"容器 {name} 已启动", Colors.GREEN)
+            return True
+        else:
+            log(f"启动容器 {name} 失败: {result.stderr.strip()}", Colors.RED)
+            return False
+
+    # 容器不存在，尝试创建并运行
+    log(f"创建并运行 Docker 容器 {name}...")
+    cmd = ["docker", "run", "-d", "--name", name]
+    for host, container in cfg.get("ports", {}).items():
+        cmd.extend(["-p", f"{host}:{container}"])
+    for key, value in cfg.get("env", {}).items():
+        cmd.extend(["-e", f"{key}={value}"])
+    cmd.append(image)
+
+    result = subprocess.run(cmd, capture_output=True, text=True, shell=False)
+    if result.returncode == 0:
+        log(f"容器 {name} 已创建并启动", Colors.GREEN)
+        return True
+    else:
+        log(f"创建容器 {name} 失败: {result.stderr.strip()}", Colors.RED)
+        return False
+
+
+def start_docker_services():
+    """启动所有依赖的 Docker 容器"""
+    if not docker_available():
+        log("未检测到 Docker，跳过容器启动", Colors.YELLOW)
+        return False
+
+    log("启动 Docker 依赖服务...")
+    started = []
+    for cfg in DOCKER_CONTAINERS:
+        if start_docker_container(cfg):
+            started.append(cfg["name"])
+        else:
+            log(f"依赖容器 {cfg['name']} 启动失败，请检查 Docker 环境", Colors.RED)
+            return False
+
+    if started:
+        log(f"Docker 服务已就绪: {', '.join(started)}", Colors.GREEN)
+    return True
+
+
+def stop_docker_services():
+    """停止所有由本脚本管理的 Docker 容器"""
+    if not docker_available():
+        return
+
+    log("停止 Docker 依赖服务...")
+    for cfg in DOCKER_CONTAINERS:
+        name = cfg["name"]
+        if not container_running(name):
+            continue
+        try:
+            result = subprocess.run(
+                ["docker", "stop", name],
+                capture_output=True, text=True, shell=False
+            )
+            if result.returncode == 0:
+                log(f"已停止 Docker 容器 {name}")
+            else:
+                log(f"停止容器 {name} 失败: {result.stderr.strip()}", Colors.YELLOW)
+        except Exception as e:
+            log(f"停止容器 {name} 出错: {e}", Colors.YELLOW)
+
 
 
 def _port_pids_windows(port):
@@ -255,6 +396,9 @@ def main():
     processes = []
 
     try:
+        # 启动 Docker 依赖服务
+        start_docker_services()
+
         # 生产模式：构建前端
         if is_prod:
             dist_dir = frontend_dir / "dist"
@@ -382,6 +526,10 @@ def main():
         kill_port(BACKEND_PORT)
         if not is_prod:
             kill_port(FRONTEND_PORT)
+
+        # 停止 Docker 容器
+        stop_docker_services()
+
         log("所有服务已停止", Colors.GREEN)
 
 

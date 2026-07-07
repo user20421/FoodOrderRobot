@@ -65,15 +65,17 @@ class OrderToolsMixin:
             logger.error(f"[Tool] cancel_order 失败: {e}")
             return f"取消订单失败：{str(e)}"
 
-    async def get_min_max_orders(self, days: int = 15) -> str:
+    async def get_min_max_orders(
+        self, days: int = 15, min_count: int = 1, max_count: int = 1
+    ) -> str:
         """
-        查询最近 N 天内总价最高和最低的订单。
-        例如用户问"半个月内数额最大和数额最小的两笔订单是什么"时调用。
+        查询最近 N 天内总价最高/最低的若干笔订单。
+        例如用户问"最近10天总价最小的3份订单和总价最高的1份订单"时，使用 days=10, min_count=3, max_count=1。
         """
         self._require_db()
         try:
             return await order_service.get_min_max_orders_in_range(
-                self.db_session, self.user_id, days
+                self.db_session, self.user_id, days, min_count, max_count
             )
         except Exception as e:
             logger.error(f"[Tool] get_min_max_orders 失败: {e}")

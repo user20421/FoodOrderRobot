@@ -29,6 +29,14 @@ class TestLLMClassifier:
         result = self.run_async(classify_message("你好"))
         assert result is not None
         assert result["route"] == "greeting"
+        assert result["answer"]  # 直接返回模板回复
+
+    def test_greeting_who_are_you(self):
+        """'你是谁'应被识别为问候并直接返回模板。"""
+        result = self.run_async(classify_message("你好，你是谁"))
+        assert result is not None
+        assert result["route"] == "greeting"
+        assert "小餐" in result["answer"]
 
     @patch("app.ai.routing.llm_classifier.get_llm")
     def test_classify_agent(self, mock_get_llm):

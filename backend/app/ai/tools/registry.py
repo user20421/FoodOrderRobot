@@ -47,6 +47,8 @@ class OrderIdInput(BaseModel):
 
 class MinMaxOrdersInput(BaseModel):
     days: int = Field(default=15, description="时间范围（天），默认 15 天")
+    min_count: int = Field(default=1, description="返回总价最低的订单数量，默认 1")
+    max_count: int = Field(default=1, description="返回总价最高的订单数量，默认 1")
 
 
 class StoreQueryInput(BaseModel):
@@ -69,6 +71,7 @@ AGENT_TOOL_MAP = {
         "check_stock",
         "get_my_orders",
         "get_order_detail",
+        "get_min_max_orders",
         "handoff_to",
     ],
     "inquiry": [
@@ -174,9 +177,10 @@ def build_tool_definitions(ctx: ToolContext) -> List[BaseTool]:
         return await ctx.cancel_order(order_id)
 
     @tool(args_schema=MinMaxOrdersInput)
-    async def get_min_max_orders(days: int = 15) -> str:
-        """查询最近 N 天内总价最高和最低的订单。"""
-        return await ctx.get_min_max_orders(days)
+    async def get_min_max_orders(days: int = 15, min_count: int = 1, max_count: int = 1) -> str:
+        """查询最近 N 天内总价最高/最低的订单。可分别指定返回几条（min_count/max_count）。
+        例如用户问"最近10天总价最小的3份订单和总价最高的1份订单"，使用 days=10, min_count=3, max_count=1。"""
+        return await ctx.get_min_max_orders(days, min_count, max_count)
 
     @tool(args_schema=StoreQueryInput)
     async def get_store_info(query: str = "") -> str:

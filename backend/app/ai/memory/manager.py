@@ -7,7 +7,6 @@ import json
 
 from app.ai.memory.buffer_memory import BufferMemory
 from app.ai.memory.summary_memory import SummaryMemory
-from app.ai.memory.vector_memory import VectorMemory
 from app.core.mongodb import is_mongodb_available, is_beanie_initialized
 from app.core.redis import get_redis, is_redis_available
 from app.core.config import settings
@@ -31,7 +30,6 @@ class MemoryManager:
     def __init__(self):
         self.buffer = BufferMemory()
         self.summary = SummaryMemory()
-        self.vector = VectorMemory()
 
     async def _load_history_from_cache(self, user_id: int, session_id: str) -> Optional[List[Dict[str, str]]]:
         """从 Redis 读取历史对话缓存"""

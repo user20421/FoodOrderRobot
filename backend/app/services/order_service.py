@@ -289,29 +289,36 @@ def format_order_line(order) -> str:
     return f"订单号：{order.id}，状态：{order_status_text(order.status)}，总价：¥{order.total_price:.2f}，菜品：{items_str}，下单时间：{time_str}"
 
 
-def format_order_list(orders, title: str = "您最近的订单如下：") -> str:
-    """订单列表格式化（供 Agent/Graph 使用）"""
+def format_order_list(orders, title: str = "您最近的订单如下：", total: int = 0) -> str:
+    """订单列表格式化（供 Agent/Graph 使用）。
+    仅展示前 5 条，若总数超过 5 条则附上看全部订单的链接。
+    """
     lines = [title]
-    for idx, o in enumerate(orders, 1):
+    for idx, o in enumerate(orders[:5], 1):
         lines.append(f"{idx}. {format_order_line(o)}")
+    if total > 5:
+        lines.append(f"\n共 {total} 条订单，[查看全部订单](/orders)")
     return "\n".join(lines)
 
 
-async def format_user_orders(db: AsyncSession, user_id: int, limit: int = 20) -> str:
-    """查询用户订单并以文本形式返回（供 Agent 使用）"""
+async def format_user_orders(db: AsyncSession, user_id: int, limit: int = 5) -> str:
+    """查询用户最近订单并以文本形式返回（供 Agent 使用），最多展示 5 条。"""
     try:
+        total = await order_repo.count_by_user(db, user_id)
         orders = await order_repo.get_by_user(db, user_id, limit)
         if not orders:
             return "您还没有订单记录。"
-        return format_order_list(orders, title="您最近的订单如下：")
+        return format_order_list(orders, title="您最近的订单如下：", total=total)
     except Exception as e:
         logger.error(f"[OrderService] 查询用户订单失败: {e}")
         return f"查询订单失败：{str(e)}"
 
 
-async def get_min_max_orders_in_range(db: AsyncSession, user_id: int, days: int = 15) -> str:
+async def get_min_max_orders_in_range(
+    db: AsyncSession, user_id: int, days: int = 15, min_count: int = 1, max_count: int = 1
+) -> str:
     """
-    查询用户最近 N 天内总价最高和最低的订单（传统函数精确计算）。
+    查询用户最近 N 天内总价最高/最低的若干笔订单。
     返回格式化的文本结果，供 Agent 直接展示。
     """
     from datetime import datetime, timedelta
@@ -324,15 +331,30 @@ async def get_min_max_orders_in_range(db: AsyncSession, user_id: int, days: int 
         if len(orders) == 1:
             return f"最近 {days} 天内您只有一笔订单：\n{format_order_line(orders[0])}"
 
-        min_order = min(orders, key=lambda o: o.total_price)
-        max_order = max(orders, key=lambda o: o.total_price)
-        lines = [
-            f"最近 {days} 天内您共有 {len(orders)} 笔订单。",
-            "",
-            f"数额最大：{format_order_line(max_order)}",
-            "",
-            f"数额最小：{format_order_line(min_order)}",
-        ]
+        min_count = max(1, min_count)
+        max_count = max(1, max_count)
+        sorted_by_price = sorted(orders, key=lambda o: o.total_price)
+        min_orders = sorted_by_price[:min_count]
+        max_orders = sorted_by_price[-max_count:][::-1]
+
+        lines = [f"最近 {days} 天内您共有 {len(orders)} 笔订单。", ""]
+
+        if max_count == 1:
+            lines.append(f"数额最大：{format_order_line(max_orders[0])}")
+        else:
+            lines.append(f"数额最大的 {len(max_orders)} 笔订单：")
+            for idx, o in enumerate(max_orders, 1):
+                lines.append(f"{idx}. {format_order_line(o)}")
+
+        lines.append("")
+
+        if min_count == 1:
+            lines.append(f"数额最小：{format_order_line(min_orders[0])}")
+        else:
+            lines.append(f"数额最小的 {len(min_orders)} 笔订单：")
+            for idx, o in enumerate(min_orders, 1):
+                lines.append(f"{idx}. {format_order_line(o)}")
+
         return "\n".join(lines)
     except Exception as e:
         logger.error(f"[OrderService] 查询最大/最小订单失败: {e}")

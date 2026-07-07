@@ -110,3 +110,15 @@ backend/scripts/
 *.tmp
 *.temp
 ~$*
+*.pid
+*.pid.lock
+
+# Local notes / scratch
+TODO.md
+NOTES.md
+SCRATCH.md
+
+# Build caches
+.cache/
+.parcel-cache/
+frontend/.turbo

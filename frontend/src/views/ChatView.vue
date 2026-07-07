@@ -1,9 +1,24 @@
-<!-- 智能聊天页面：Markdown 渲染、快捷操作、购物车抽屉、自动滚动 -->
+<!--
+  ============================================================
+  文件名：ChatView.vue
+  位置：frontend/src/views/ChatView.vue
+  作用：智能聊天页面
+  功能：
+    - 显示用户和机器人的聊天消息
+    - 支持 Markdown 格式渲染机器人回复
+    - 支持快捷操作按钮（推荐菜品、查看菜单等）
+    - 支持图片搜菜（上传图片识别菜品）
+    - 支持购物车抽屉和悬浮购物车按钮
+    - 支持数字人头像和语音播报开关
+    - 发送消息后自动滚动到底部
+  ============================================================
+-->
+
 <template>
   <div class="chat-container">
-    <!-- 数字人 + 语音开关 -->
     <div class="avatar-area">
       <DigitalAvatar :status="avatarStatus" />
+
       <el-button
         circle
         :type="speechEnabled ? 'success' : 'info'"
@@ -18,7 +33,6 @@
       </el-button>
     </div>
 
-    <!-- 聊天消息区域 -->
     <div class="chat-messages" ref="messageBox">
       <div
         v-for="(msg, index) in messages"
@@ -30,10 +44,12 @@
           :icon="msg.role === 'user' ? 'UserFilled' : 'Food'"
           :class="msg.role === 'user' ? 'user-avatar' : 'bot-avatar'"
         />
+
         <div class="message-bubble">
           <div v-if="msg.imageUrl" class="message-image">
             <el-image :src="msg.imageUrl" fit="cover" class="message-image-thumb" :preview-src-list="[msg.imageUrl]" />
           </div>
+
           <div
             v-if="msg.content && msg.content !== '[图片]'"
             class="message-text"
@@ -42,6 +58,7 @@
           ></div>
         </div>
       </div>
+
       <div v-if="loading" class="message-row bot">
         <el-avatar :size="40" icon="Food" class="bot-avatar" />
         <div class="message-bubble">
@@ -51,22 +68,25 @@
       </div>
     </div>
 
-    <!-- 快捷操作 -->
     <div class="quick-actions">
       <el-button size="small" @click="sendQuick('有什么推荐的菜品？')">推荐菜品</el-button>
       <el-button size="small" @click="sendQuick('查看菜单')">查看菜单</el-button>
       <el-button size="small" @click="sendQuick('查询我的订单')">查询订单</el-button>
+
       <el-button size="small" type="success" @click="triggerImageUpload">
         <el-icon><Camera /></el-icon>
         图片搜菜
       </el-button>
+
       <el-button size="small" type="primary" @click="confirmOrder" :disabled="cartStore.totalCount === 0">
         确认下单 ({{ cartStore.totalCount }})
       </el-button>
+
       <el-button size="small" type="danger" plain @click="handleClearChat">
         <el-icon><Delete /></el-icon>
         清空对话
       </el-button>
+
       <input
         ref="imageInput"
         type="file"
@@ -76,9 +96,7 @@
       />
     </div>
 
-    <!-- 输入区域 -->
     <div class="chat-input-area">
-      <!-- 图片预览 -->
       <div v-if="imagePreviewUrl" class="image-preview-bar">
         <el-image :src="imagePreviewUrl" fit="cover" class="preview-thumb" />
         <el-button link size="small" @click="clearImage">
@@ -100,19 +118,21 @@
       </el-input>
     </div>
 
-    <!-- 购物车抽屉 -->
     <el-drawer v-model="cartVisible" title="购物车" size="360px">
       <div v-if="cartStore.items.length === 0" class="empty-cart">
         <el-empty description="购物车是空的" />
       </div>
+
       <div v-else>
         <el-table :data="cartStore.items" size="small">
           <el-table-column prop="name" label="菜品" />
           <el-table-column prop="quantity" label="数量" width="80" />
+
           <el-table-column label="单价" width="80">
             <template #default="scope">¥{{ scope.row.unit_price }}</template>
           </el-table-column>
         </el-table>
+
         <div class="cart-footer">
           <div class="cart-total">合计：¥{{ cartStore.totalPrice.toFixed(2) }}</div>
           <el-button type="primary" @click="confirmOrderFromDrawer">确认下单</el-button>
@@ -120,7 +140,6 @@
       </div>
     </el-drawer>
 
-    <!-- 悬浮购物车按钮 -->
     <el-badge :value="cartStore.totalCount" class="cart-fab" v-if="cartStore.totalCount > 0">
       <el-button circle size="large" type="warning" @click="cartVisible = true">
         <el-icon><ShoppingCart /></el-icon>
@@ -130,56 +149,116 @@
 </template>
 
 <script setup lang="ts">
+// ============================================================
+// 第 1 步：导入需要的工具、组件和函数
+// ============================================================
+
 import { ref, nextTick, onMounted, watch } from 'vue'
+
 import { useRoute, useRouter } from 'vue-router'
+
 import { ElMessage, ElMessageBox } from 'element-plus'
+
 import { Microphone, Mute, Camera, Close } from '@element-plus/icons-vue'
+
 import { marked } from 'marked'
+
 import { storeToRefs } from 'pinia'
+
 import { useCartStore } from '@/features/cart/stores/cart.store'
 import { useChatStore } from '@/features/chat/stores/chat.store'
 import { useAuthStore } from '@/features/auth/stores/auth.store'
-import { sendChatMessage } from '@/features/chat/api/chat.api'
+
+import { sendChatMessageStream } from '@/features/chat/api/chat.api'
+
 import DigitalAvatar from '@/components/DigitalAvatar.vue'
+
 import { sanitizeHtml, sanitizeTextHtml } from '@/shared/utils/sanitize'
+
 import type { ChatRequest, CartItem } from '@/shared/types'
+
 import { STORAGE_KEY_SPEECH, IMAGE_UPLOAD_MAX_SIZE } from '@/shared/constants'
+
+// ============================================================
+// 第 2 步：定义类型
+// ============================================================
 
 type AvatarStatus = 'idle' | 'listening' | 'thinking' | 'speaking'
 
+// ============================================================
+// 第 3 步：定义变量（数据）
+// ============================================================
+
 const route = useRoute()
+
 const router = useRouter()
+
 const chatStore = useChatStore()
+
 const authStore = useAuthStore()
+
 const { messages } = storeToRefs(chatStore)
+
 const inputMessage = ref('')
+
 const loading = ref(false)
+
 const cartVisible = ref(false)
+
 const messageBox = ref<HTMLElement | null>(null)
+
 const cartStore = useCartStore()
+
 const avatarStatus = ref<AvatarStatus>('idle')
+
 const speechEnabled = ref(localStorage.getItem(STORAGE_KEY_SPEECH) !== 'false')
 
-// 拍照搜菜状态
+// ============================================================
+// 第 4 步：图片搜菜相关状态
+// ============================================================
+
 const imageInput = ref<HTMLInputElement | null>(null)
+
 const imageBase64 = ref<string>('')
+
 const imagePreviewUrl = ref<string>('')
+
+// ============================================================
+// 第 5 步：监听变量变化
+// ============================================================
 
 watch(speechEnabled, (val) => {
   localStorage.setItem(STORAGE_KEY_SPEECH, val ? 'true' : 'false')
 })
 
-// Markdown 渲染缓存，避免重复解析
+// 监听消息变化，自动滚动到底部（兼容流式输出和快速追加）
+watch(messages, async () => {
+  await scrollToBottom()
+}, { deep: true })
+
+// ============================================================
+// 第 6 步：Markdown 渲染缓存
+// ============================================================
+
 const markdownCache = new Map<string, string>()
+
+// ============================================================
+// 第 7 步：生命周期钩子
+// ============================================================
 
 onMounted(async () => {
   await scrollToBottom()
+
   const preset = route.query.preset
   if (preset) {
     inputMessage.value = String(preset)
     await sendMessage()
   }
 })
+
+// ============================================================
+// 第 8 步：工具函数
+// ============================================================
 
 function formatText(text: string) {
   const html = text.replace(/\n/g, '<br>')
@@ -190,9 +269,13 @@ function renderMarkdown(text: string) {
   if (markdownCache.has(text)) {
     return markdownCache.get(text)!
   }
+
   const rawHtml = marked.parse(text, { breaks: true, gfm: true }) as string
+
   const html = sanitizeHtml(rawHtml)
+
   markdownCache.set(text, html)
+
   return html
 }
 
@@ -228,7 +311,6 @@ function handleImageChange(event: Event) {
   const file = target.files?.[0]
   if (!file) return
 
-  // 限制图片大小
   if (file.size > IMAGE_UPLOAD_MAX_SIZE) {
     ElMessage.error('图片大小不能超过5MB')
     target.value = ''
@@ -236,19 +318,20 @@ function handleImageChange(event: Event) {
   }
 
   const reader = new FileReader()
+
   reader.onload = () => {
     const result = reader.result as string
     imageBase64.value = result
     imagePreviewUrl.value = result
-    // 选择图片后自动发送识别
     sendMessage()
   }
+
   reader.onerror = () => {
     ElMessage.error('图片读取失败')
   }
+
   reader.readAsDataURL(file)
 
-  // 重置 input，允许再次选择同一张图片
   target.value = ''
 }
 
@@ -257,70 +340,105 @@ function clearImage() {
   imagePreviewUrl.value = ''
 }
 
+// ============================================================
+// 第 9 步：发送消息主函数（核心逻辑）
+// ============================================================
+
+function appendCartSummary(responseText: string, cart: CartItem[]): string {
+  if (!Array.isArray(cart)) return responseText
+
+  if (cart.length > 0) {
+    const total = cart.reduce((sum, item) => sum + (item.unit_price || 0) * (item.quantity || 1), 0)
+    const cartLines = cart.map(item => `• ${item.name} x${item.quantity} = ¥${((item.unit_price || 0) * item.quantity).toFixed(0)}`)
+    const cartSummary = `\n\n────────────\n🛒 当前购物车（合计 ¥${total.toFixed(0)}）\n${cartLines.join('\n')}`
+    if (!responseText.includes('购物车')) {
+      responseText += cartSummary
+    }
+    cartStore.setCart(cart)
+  } else if (cart.length === 0 && cartStore.items.length > 0) {
+    cartStore.clearCart()
+    if (!responseText.includes('购物车')) {
+      responseText += '\n\n────────────\n🛒 购物车已清空'
+    }
+  }
+
+  return responseText
+}
+
 async function sendMessage() {
   const text = inputMessage.value.trim()
+
   const hasImage = !!imageBase64.value
 
   if (!text && !hasImage) return
 
-  // 停止语音播报和录音
   if (window.speechSynthesis) window.speechSynthesis.cancel()
 
-  // 构建用户消息：如果有图片则显示图片
   const userMessage: { role: 'user'; content: string; imageUrl?: string } = {
     role: 'user',
     content: text || '[图片]',
   }
+
   if (hasImage) {
     userMessage.imageUrl = imagePreviewUrl.value
   }
+
   chatStore.addMessage(userMessage)
 
-  // 清空输入
   inputMessage.value = ''
+
   const currentImageBase64 = imageBase64.value
   clearImage()
 
   loading.value = true
+
   avatarStatus.value = 'thinking'
+
   await scrollToBottom()
 
+  let rawResponse = ''
+  let assistantIndex = -1
+
   try {
-    // 深拷贝购物车，避免传递 Vue Proxy 对象给 axios
     const currentCart: CartItem[] = JSON.parse(JSON.stringify(cartStore.items || []))
+
     const payload: ChatRequest = {
       user_id: authStore.userId ?? 0,
       message: text,
       cart: currentCart,
     }
+
     if (currentImageBase64) {
       payload.image_base64 = currentImageBase64
     }
-    const res = await sendChatMessage(payload)
-    const data = res.data
-    // 构建购物车摘要，作为对话内容的一部分展示给用户
-    let responseText = data.response || ''
-    if (Array.isArray(data.cart) && data.cart.length > 0) {
-      const total = data.cart.reduce((sum, item) => sum + (item.unit_price || 0) * (item.quantity || 1), 0)
-      const cartLines = data.cart.map(item => `• ${item.name} x${item.quantity} = ¥${((item.unit_price || 0) * item.quantity).toFixed(0)}`)
-      const cartSummary = `\n\n────────────\n🛒 当前购物车（合计 ¥${total.toFixed(0)}）\n${cartLines.join('\n')}`
-      // 如果 LLM 回复中已包含"购物车"关键词，避免重复追加
-      if (!responseText.includes('购物车')) {
-        responseText += cartSummary
-      }
-      cartStore.setCart(data.cart)
-    } else if (Array.isArray(data.cart) && data.cart.length === 0 && cartStore.items.length > 0) {
-      // 后端返回空 cart，说明订单已提交或购物车已清空
-      cartStore.clearCart()
-      if (!responseText.includes('购物车')) {
-        responseText += '\n\n────────────\n🛒 购物车已清空'
+
+    // 先插入一条空 assistant 消息，用于流式逐字显示
+    chatStore.addMessage({ role: 'assistant', content: '' })
+    assistantIndex = messages.value.length - 1
+
+    for await (const event of sendChatMessageStream(payload)) {
+      if (event.type === 'text' && event.content) {
+        rawResponse += event.content
+        chatStore.updateMessage(assistantIndex, { role: 'assistant', content: rawResponse })
+        await scrollToBottom()
+      } else if (event.type === 'done') {
+        const finalResponse = appendCartSummary(rawResponse, event.cart || [])
+        chatStore.updateMessage(assistantIndex, { role: 'assistant', content: finalResponse })
+        avatarStatus.value = 'idle'
+      } else if (event.type === 'error') {
+        chatStore.updateMessage(assistantIndex, { role: 'assistant', content: '抱歉，服务暂时异常，请稍后重试。' })
+        avatarStatus.value = 'idle'
+        console.error(event.message)
       }
     }
-    chatStore.addMessage({ role: 'assistant', content: responseText })
-    avatarStatus.value = 'idle'
-    speakText(data.response)
+
+    speakText(rawResponse)
   } catch (err) {
-    chatStore.addMessage({ role: 'assistant', content: '抱歉，服务暂时异常，请稍后重试。' })
+    if (assistantIndex >= 0) {
+      chatStore.updateMessage(assistantIndex, { role: 'assistant', content: '抱歉，服务暂时异常，请稍后重试。' })
+    } else {
+      chatStore.addMessage({ role: 'assistant', content: '抱歉，服务暂时异常，请稍后重试。' })
+    }
     avatarStatus.value = 'idle'
     console.error(err)
   } finally {
@@ -329,11 +447,19 @@ async function sendMessage() {
   }
 }
 
+// ============================================================
+// 第 10 步：语音相关函数
+// ============================================================
+
 function speakText(text: string) {
   if (!speechEnabled.value || !window.speechSynthesis) return
+
   const utter = new SpeechSynthesisUtterance(text)
+
   utter.lang = 'zh-CN'
+
   utter.rate = 1.1
+
   window.speechSynthesis.speak(utter)
 }
 
@@ -341,6 +467,10 @@ function toggleSpeech() {
   speechEnabled.value = !speechEnabled.value
   localStorage.setItem(STORAGE_KEY_SPEECH, speechEnabled.value ? 'true' : 'false')
 }
+
+// ============================================================
+// 第 11 步：下单相关函数
+// ============================================================
 
 async function confirmOrder() {
   await sendQuick('确认下单')
@@ -351,6 +481,10 @@ async function confirmOrderFromDrawer() {
   await sendQuick('确认下单')
 }
 
+// ============================================================
+// 第 12 步：清空对话函数
+// ============================================================
+
 async function handleClearChat() {
   try {
     await ElMessageBox.confirm('确定要清空当前对话记录吗？', '提示', {
@@ -358,17 +492,18 @@ async function handleClearChat() {
       cancelButtonText: '取消',
       type: 'warning',
     })
-    chatStore.clearMessages()
-    markdownCache.clear()
-    await scrollToBottom()
-    ElMessage.success('对话已清空')
+
+    chatStore.clearMessages()   // 清空聊天消息
+    markdownCache.clear()       // 清空 Markdown 缓存
+    await scrollToBottom()      // 滚动到底部
+    ElMessage.success('对话已清空') // 显示成功提示
   } catch {
-    // 用户取消
   }
 }
 </script>
 
 <style scoped>
+
 .chat-container {
   display: flex;
   flex-direction: column;
@@ -439,7 +574,6 @@ async function handleClearChat() {
   color: #333;
 }
 
-/* Markdown 渲染样式 */
 .message-text :deep(h1),
 .message-text :deep(h2),
 .message-text :deep(h3) {

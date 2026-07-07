@@ -154,11 +154,16 @@ async def _process_chat_core(
     # 加载对话上下文
     history_messages, summary = await memory_manager.get_conversation_context(user_id)
 
-    # Layer 2：轻量 LLM 分类器。对问候/闲聊/简单 FAQ 直接调用 LLM，不进入 Agent 工具循环。
+    # Layer 2：轻量 LLM 分类器。对问候/闲聊/简单 FAQ 直接回复，不进入 Agent 工具循环。
     classification = await classify_message(message, history_summary=summary)
-    if classification and classification.get("route") in ("greeting", "faq_direct"):
+    if classification and classification.get("route") in ("greeting", "faq_direct", "too_complex"):
         try:
-            response = await _direct_llm_reply(message, user_identity, summary=summary)
+            # greeting 已由分类器返回内置模板，faq_direct 再走一次轻量 LLM 生成
+            answer = classification.get("answer") or ""
+            if answer:
+                response = answer
+            else:
+                response = await _direct_llm_reply(message, user_identity, summary=summary)
             await chat_repo.save_message(db, user_id, "user", message)
             await chat_repo.save_message(db, user_id, "assistant", response, cart_snapshot=cart)
             return {
@@ -180,14 +185,28 @@ async def _process_chat_core(
         "user_identity": user_identity,
     }
 
-    # 调用多智能体图，将请求级数据库会话通过 config 传入，保证 Graph 内下单/查单与当前请求共享事务上下文
-    graph = get_agent_graph()
-    result = await graph.ainvoke(agent_input, config={"configurable": {"db_session": db}})
+    try:
+        # 调用多智能体图，将请求级数据库会话通过 config 传入，保证 Graph 内下单/查单与当前请求共享事务上下文
+        graph = get_agent_graph()
+        result = await graph.ainvoke(agent_input, config={"configurable": {"db_session": db}})
 
-    response = result.get("response", "抱歉，处理您的请求时出现了问题。")
-    new_cart = result.get("cart", cart)
-    intent = result.get("intent") or "unknown"
-    agent = result.get("current_agent") or "unknown"
+        response = result.get("response", "抱歉，处理您的请求时出现了问题。")
+        new_cart = result.get("cart", cart)
+        intent = result.get("intent") or "unknown"
+        agent = result.get("current_agent") or "unknown"
+    except Exception as e:
+        logger.exception(f"[ChatService] Agent 处理异常: {e}")
+        # 智能通道兜底：先尝试降级到快速通道；若无法降级则返回礼貌提示
+        fallback = await try_fast_path(message, cart, db, user_id)
+        if fallback:
+            await chat_repo.save_message(db, user_id, "user", message, cart_snapshot=fallback["cart"])
+            await chat_repo.save_message(db, user_id, "assistant", fallback["response"], cart_snapshot=fallback["cart"])
+            return fallback
+
+        response = "抱歉，刚才处理您的请求时出了点小问题，您可以再说一次吗？"
+        new_cart = cart
+        intent = "service"
+        agent = "fallback"
 
     # 保存对话记录
     await chat_repo.save_message(db, user_id, "user", message)

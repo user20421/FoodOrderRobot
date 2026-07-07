@@ -54,6 +54,11 @@ export const useChatStore = defineStore('chat', () => {
     save()
   }
 
+  function updateMessage(index: number, msg: ChatMessage) {
+    messages.value.splice(index, 1, msg)
+    save()
+  }
+
   function setMessages(msgs: ChatMessage[]) {
     messages.value = msgs
     save()
@@ -72,7 +77,7 @@ export const useChatStore = defineStore('chat', () => {
     }
   }
 
-  return { messages, reloadMessages, addMessage, setMessages, clearMessages, save }
+  return { messages, reloadMessages, addMessage, updateMessage, setMessages, clearMessages, save }
 })
 
 /**

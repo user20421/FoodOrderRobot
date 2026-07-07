@@ -13,7 +13,7 @@ from app.core.database import Base
 from app.models.user import User
 from app.models.menu import MenuCategory, MenuItem
 from app.models.order import Order, OrderItem
-from app.services.order_service import create_order
+from app.services.order_service import create_order, get_min_max_orders_in_range
 from app.schemas.order import CartItem
 from app.core.exceptions import BusinessException
 
@@ -92,3 +92,42 @@ async def test_create_order_insufficient_stock(db: AsyncSession, sample_data):
     # 验证库存未被扣减
     await db.refresh(dish)
     assert dish.stock == 10
+
+
+async def test_get_min_max_orders_in_range_top_n(db: AsyncSession):
+    """get_min_max_orders_in_range 应支持返回指定数量的最低/最高订单"""
+    user = User(username="rank_user", password="", role="customer")
+    db.add(user)
+    await db.flush()
+
+    category = MenuCategory(name="测试菜", sort_order=1)
+    db.add(category)
+    await db.flush()
+
+    # 创建价格不同的菜品
+    dishes = []
+    for name, price in [("白米饭", 3.0), ("小菜", 12.0), ("汤", 20.0), ("荤菜", 50.0), ("大餐", 100.0)]:
+        dish = MenuItem(name=name, price=price, category="测试菜", stock=100, is_recommended=0, sales_count=0)
+        db.add(dish)
+        dishes.append(dish)
+    await db.commit()
+
+    # 每个菜品下一单
+    orders = []
+    for dish in dishes:
+        items = [CartItem(menu_item_id=dish.id, name=dish.name, quantity=1, unit_price=dish.price)]
+        order = await create_order(db, user.id, items)
+        orders.append(order)
+
+    result = await get_min_max_orders_in_range(db, user.id, days=30, min_count=3, max_count=1)
+
+    # 验证返回了 3 个最低订单和 1 个最高订单
+    assert "数额最小的 3 笔订单" in result
+    assert "数额最大：" in result
+    # 最低价三道菜：白米饭、小菜、汤
+    for dish_name in ["白米饭", "小菜", "汤"]:
+        assert dish_name in result
+    # 最高价一道菜：大餐
+    assert "大餐" in result
+    # 荤菜不应该出现在最低或最高列表里
+    assert result.count("荤菜") == 0

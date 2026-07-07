@@ -141,6 +141,65 @@ class TestFastRouter:
         assert result["agent"] == "fast_order"
         assert any(c["name"] == "宫保鸡丁" for c in result["cart"])
 
+    @patch("app.ai.routing.fast_router._get_menu_item_names")
+    @patch("app.ai.routing.fast_router.menu_service.get_item_by_name")
+    def test_decrease_cart_quantity(self, mock_get_item, mock_names):
+        """测试"减掉一份白米饭"能正确减少购物车数量。"""
+        mock_names.return_value = ["白米饭"]
+        mock_get_item.return_value = _mock_item("白米饭", 3.0, 6)
+        cart = [{"name": "白米饭", "quantity": 3, "unit_price": 3.0}]
+        result = self.run_async(try_fast_path("减掉一份白米饭", cart, MockDB(), 1))
+        assert result is not None
+        assert result["agent"] == "fast_order"
+        rice = next(c for c in result["cart"] if c["name"] == "白米饭")
+        assert rice["quantity"] == 2
+
+    @patch("app.ai.routing.fast_router._get_menu_item_names")
+    @patch("app.ai.routing.fast_router.menu_service.get_item_by_name")
+    def test_remove_from_cart(self, mock_get_item, mock_names):
+        """测试"删除白米饭"能从购物车移除。"""
+        mock_names.return_value = ["白米饭"]
+        mock_get_item.return_value = _mock_item("白米饭", 3.0, 6)
+        cart = [{"name": "白米饭", "quantity": 3, "unit_price": 3.0}]
+        result = self.run_async(try_fast_path("删除白米饭", cart, MockDB(), 1))
+        assert result is not None
+        assert result["agent"] == "fast_order"
+        assert not any(c["name"] == "白米饭" for c in result["cart"])
+
+    @patch("app.ai.routing.fast_router._get_menu_item_names")
+    @patch("app.ai.routing.fast_router.menu_service.get_item_by_name")
+    def test_dish_name_then_verb_decrease(self, mock_get_item, mock_names):
+        """测试"白米饭减一份"这种菜名在前、动词在后的说法。"""
+        mock_names.return_value = ["白米饭"]
+        mock_get_item.return_value = _mock_item("白米饭", 3.0, 6)
+        cart = [{"name": "白米饭", "quantity": 3, "unit_price": 3.0}]
+        result = self.run_async(try_fast_path("白米饭减一份", cart, MockDB(), 1))
+        assert result is not None
+        rice = next(c for c in result["cart"] if c["name"] == "白米饭")
+        assert rice["quantity"] == 2
+
+    def test_greeting_simple_direct_reply(self):
+        """测试简单问候直接返回模板，不调用 LLM。"""
+        result = self.run_async(try_fast_path("你好", [], MockDB(), 1))
+        assert result is not None
+        assert result["agent"] == "fast_greeting"
+        assert "欢迎" in result["response"]
+
+    def test_greeting_identity_not_handled_by_fast_router(self):
+        """身份询问（如'你是谁'）仍交给 LLM 分类器处理。"""
+        result = self.run_async(try_fast_path("你好，你是谁", [], MockDB(), 1))
+        assert result is None
+
+    def test_do_not_checkout(self):
+        """测试"先不要结账"不会误触发确认下单。"""
+        cart = [{"name": "白米饭", "quantity": 1, "unit_price": 3.0}]
+        result = self.run_async(try_fast_path("先不要结账", cart, MockDB(), 1))
+        # 不应命中 fast_order 的确认下单，可能返回 None 或被其他 handler 处理
+        if result is not None:
+            assert result.get("cart") == cart  # 购物车必须保持原样
+            assert "订单" not in result.get("response", "")
+            assert "购物车已清空" not in result.get("response", "")
+
     def test_no_match(self):
         result = self.run_async(try_fast_path("这个菜怎么做", [], MockDB(), 1))
         assert result is None

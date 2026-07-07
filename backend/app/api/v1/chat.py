@@ -125,7 +125,7 @@ async def chat_stream(
             for char in response_text:
                 payload = json.dumps({"type": "text", "content": char}, ensure_ascii=False)
                 yield f"data: {payload}\n\n"
-                await asyncio.sleep(0.025)  # 25ms/字，约40字/秒
+                await asyncio.sleep(0.015)  # 15ms/字，约67字/秒
 
             # 3. 发送结束事件，附带 cart 数据
             done_payload = json.dumps({"type": "done", "cart": new_cart}, ensure_ascii=False)

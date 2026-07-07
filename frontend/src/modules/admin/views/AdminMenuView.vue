@@ -47,6 +47,7 @@
             <el-option label="凉菜" value="凉菜" />
             <el-option label="汤品" value="汤品" />
             <el-option label="主食" value="主食" />
+            <el-option label="饮品" value="饮品" />
           </el-select>
         </el-form-item>
         <el-form-item label="价格">

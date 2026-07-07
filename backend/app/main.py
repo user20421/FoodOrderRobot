@@ -22,6 +22,7 @@ from app.core.database import init_db, AsyncSessionLocal
 from app.core.mongodb import init_mongodb, close_mongodb
 from app.core.redis import init_redis, close_redis
 from app.core.logging_config import setup_logging, get_logger
+from app.core.config import settings
 from app.core.chroma_client import chroma_store
 from app.ai.rag.indexer import rag_indexer
 from app.api.v1 import auth, menu, order, chat, admin, system, image_search
@@ -42,6 +43,11 @@ async def lifespan(app: FastAPI):
     启动时：建表 + 初始化数据 + 连接MongoDB + 初始化RAG索引
     """
     app.state.startup_time = datetime.now(timezone.utc).isoformat()
+
+    # JWT 密钥安全检查
+    if settings.jwt_secret_key in ("your-secret-key-change-in-production", ""):
+        print("[⚠️ 安全警告] JWT_SECRET_KEY 使用的是默认弱密钥，生产环境请务必修改！")
+        logger.warning("JWT_SECRET_KEY 使用的是默认弱密钥，生产环境请务必修改")
 
     # 创建数据库表
     await init_db()

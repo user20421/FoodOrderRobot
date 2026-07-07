@@ -29,6 +29,7 @@ from app.core.logging_config import get_logger
 logger = get_logger(__name__)
 
 MAX_TOOL_ITERATIONS = 3
+MAX_HANDOFFS = 2  # 最多允许 2 次 Agent 间转交，防止踢皮球
 
 # 触发 RAG 检索的关键词（简单语义 guard）
 _RAG_TRIGGER_KEYWORDS = [
@@ -97,6 +98,11 @@ async def _run_agent_loop(
     支持 handoff_to 工具，命中时返回 Command(goto=target)。
     """
     allowed_agent_names = allowed_agent_names or ["order", "inquiry", "recommend", "service"]
+
+    # 读取 handoff 历史，用于检测循环和限制次数
+    metadata = state.get("metadata") or {}
+    handoff_path = list(metadata.get("handoff_path") or [])
+    handoff_count = int(metadata.get("handoff_count") or 0)
 
     # 服务型/咨询型问题按需做一次轻量 RAG，注入上下文
     rag_context = ""
@@ -178,7 +184,13 @@ async def _run_agent_loop(
             # 识别 handoff
             if tc["name"] == "handoff_to" and isinstance(result, str) and result.startswith("[HANDOFF:"):
                 target = result.split("]")[0].replace("[HANDOFF:", "").strip()
-                if target in allowed_agent_names:
+                # 防止 Agent 间踢皮球：循环检测 + 次数限制
+                if target in handoff_path:
+                    result = f"无法再次转交给 {target}，已出现过循环转交。请基于当前能力直接回复用户。"
+                elif handoff_count >= MAX_HANDOFFS:
+                    result = f"转交次数已达上限，请直接回复用户，不要再转交给其他 Agent。"
+                elif target in allowed_agent_names:
+                    new_path = handoff_path + [agent_name]
                     return Command(
                         goto=target,
                         update={
@@ -191,11 +203,14 @@ async def _run_agent_loop(
                                 **(state.get("metadata") or {}),
                                 "agent": agent_name,
                                 "handoff_to": target,
+                                "handoff_path": new_path,
+                                "handoff_count": handoff_count + 1,
                                 "tool_count": tool_call_count,
                             },
                         },
                     )
-                result = f"无法转交给 {target}，目标 Agent 不存在。"
+                else:
+                    result = f"无法转交给 {target}，目标 Agent 不存在。"
 
             added_messages.append(_build_tool_result_message(tc["id"], str(result)))
 
@@ -238,7 +253,7 @@ async def supervisor_node(state: Dict[str, Any], config: Optional[RunnableConfig
         intent = "service"
         reason = "解析失败，兜底到 service"
 
-    logger.info(f"[Supervisor] intent={intent}, reason={reason}")
+    logger.info(f"[Supervisor] intent={intent}, reason={reason}, confidence={decision.get('confidence', 'unknown')}")
 
     return Command(
         goto=intent,

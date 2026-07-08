@@ -68,6 +68,7 @@ AGENT_TOOL_MAP = {
         "view_cart",
         "clear_cart",
         "confirm_order",
+        "cancel_order",
         "check_stock",
         "get_my_orders",
         "get_order_detail",

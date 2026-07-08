@@ -12,12 +12,6 @@ class AppException(Exception):
         super().__init__(self.message)
 
 
-class ValidationException(AppException):
-    """参数校验异常"""
-    def __init__(self, message: str = "参数校验失败"):
-        super().__init__(message, status_code=400)
-
-
 class AuthenticationException(AppException):
     """认证异常"""
     def __init__(self, message: str = "认证失败"):
@@ -40,9 +34,3 @@ class BusinessException(AppException):
     """业务逻辑异常"""
     def __init__(self, message: str = "业务处理失败"):
         super().__init__(message, status_code=422)
-
-
-class AIServiceException(AppException):
-    """AI服务异常"""
-    def __init__(self, message: str = "AI服务暂时不可用"):
-        super().__init__(message, status_code=503)

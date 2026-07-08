@@ -48,8 +48,3 @@ class MenuItemOut(MenuItemBase):
     updated_at: datetime
 
     model_config = {"from_attributes": True}
-
-
-class MenuResponse(BaseModel):
-    categories: List[MenuCategoryOut]
-    items: List[MenuItemOut]

@@ -10,7 +10,6 @@ from langchain_community.embeddings import ZhipuAIEmbeddings
 
 from app.core.config import settings
 
-_chroma_client = None
 _embedding_function = None
 
 

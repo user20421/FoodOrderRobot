@@ -195,8 +195,10 @@ class TestAdmin:
     def test_admin_orders_list(self):
         r = client.get("/api/v1/admin/orders", headers={"X-User-ID": "1", "X-User-Role": "admin"})
         assert r.status_code == 200
-        orders = r.json()
-        assert isinstance(orders, list)
+        data = r.json()
+        assert "items" in data
+        assert "total" in data
+        assert isinstance(data["items"], list)
     
     def test_admin_auth_reject(self):
         r = client.get("/api/v1/admin/menu", headers={"X-User-ID": "2", "X-User-Role": "customer"})

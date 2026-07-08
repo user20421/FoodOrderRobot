@@ -13,7 +13,7 @@ from app.ai.routing import try_fast_path
 from app.ai.routing.llm_classifier import classify_message, generate_direct_reply
 from app.repositories.chat_repo import chat_repo
 from app.repositories.user_repo import user_repo
-from app.services.image_search_service import decode_image_base64, search_dishes_by_image
+from app.services.image_search_service import decode_image_base64, search_dishes_by_image, format_image_search_response
 
 
 logger = get_logger(__name__)
@@ -54,33 +54,6 @@ async def _direct_llm_reply(message: str, user_identity: str, summary: str = "")
     return await generate_direct_reply(message, user_identity=user_identity, history_summary=summary)
 
 
-async def _format_image_search_response(result: dict) -> str:
-    """把图片搜菜结果格式化为最终回复文本。"""
-    description = result.get("description", "")
-    if not description:
-        return "图片识别失败，请尝试上传更清晰的菜品照片。"
-
-    if not result["found"]:
-        # 友好提示：说明识别到了什么，但本店没有
-        return (
-            f"图片看起来是：{description}\n"
-            f"抱歉，本店菜单中没有找到与这道菜相同或非常相似的菜品。"
-        )
-
-    menu_items = result["menu_items"]
-    matches = result["matches"]
-    lines = [f"图片看起来是：{description}", "根据图片特征，本店有以下相似菜品："]
-    for m in matches[:3]:
-        name = m.get("name", "")
-        reason = m.get("reason", "")
-        item = next((i for i in menu_items if i["name"] == name), None)
-        if item:
-            lines.append(f"• {item['name']}（¥{item['price']:.0f}）- {reason}")
-        else:
-            lines.append(f"• {name} - {reason}")
-    return "\n".join(lines)
-
-
 async def _process_image_search(
     db: AsyncSession,
     user_id: int,
@@ -100,7 +73,7 @@ async def _process_image_search(
         if not result["description"]:
             response = "图片识别失败，请尝试上传更清晰的菜品照片。"
         else:
-            response = await _format_image_search_response(result)
+            response = format_image_search_response(result)
     except ValueError as e:
         response = str(e)
     except Exception as e:

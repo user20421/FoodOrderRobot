@@ -5,7 +5,7 @@ import json
 import asyncio
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
 from app.repositories.menu_repo import menu_category_repo, menu_item_repo
 from app.models.menu import MenuItem
@@ -175,3 +175,23 @@ async def get_item_by_name(db: AsyncSession, name: str) -> Optional[MenuItemOut]
     if items:
         return MenuItemOut.model_validate(items[0])
     return None
+
+
+async def get_top_selling_dishes(db: AsyncSession, limit: int = 10) -> List[Dict[str, Any]]:
+    """查询销量最高的菜品，返回字典列表（供快速通道 / Agent 推荐使用）。"""
+    try:
+        items = await get_top_selling_items(db, limit)
+        return [
+            {
+                "name": item.name,
+                "price": float(item.price),
+                "description": item.description or "",
+                "tags": item.tags or "",
+                "sales_count": item.sales_count or 0,
+                "category": item.category,
+            }
+            for item in items
+        ]
+    except Exception as e:
+        logger.warning(f"[MenuService] 查询热销菜品失败: {e}")
+        return []

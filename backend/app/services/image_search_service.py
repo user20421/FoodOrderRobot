@@ -32,10 +32,6 @@ IMAGE_MAGIC = {
     b"GIF89a": "image/gif",
 }
 
-# 保持旧名称的兼容性别名（部分历史代码/测试可能使用）
-_ALLOWED_IMAGE_TYPES = ALLOWED_IMAGE_TYPES
-_IMAGE_MAGIC = IMAGE_MAGIC
-
 MAX_IMAGE_SIZE = 5 * 1024 * 1024  # 5MB
 
 
@@ -240,6 +236,32 @@ async def _load_menu_dicts(db: AsyncSession) -> List[Dict]:
     except Exception as e:
         logger.error(f"[ImageSearchService] 加载菜单失败: {e}", exc_info=True)
         return []
+
+
+def format_image_search_response(result: Dict) -> str:
+    """把图片搜菜结果格式化为最终回复文本（供聊天流与独立 API 共用）。"""
+    description = result.get("description", "")
+    if not description:
+        return "图片识别失败，请尝试上传更清晰的菜品照片。"
+
+    if not result.get("found"):
+        return (
+            f"图片看起来是：{description}\n"
+            f"抱歉，本店菜单中没有找到与这道菜相同或非常相似的菜品。"
+        )
+
+    menu_items = result.get("menu_items", [])
+    matches = result.get("matches", [])
+    lines = [f"图片看起来是：{description}", "根据图片特征，本店有以下相似菜品："]
+    for m in matches[:3]:
+        name = m.get("name", "")
+        reason = m.get("reason", "")
+        item = next((i for i in menu_items if i.get("name") == name), None)
+        if item:
+            lines.append(f"• {item['name']}（¥{item['price']:.0f}）- {reason}")
+        else:
+            lines.append(f"• {name} - {reason}")
+    return "\n".join(lines)
 
 
 async def search_dishes_by_image(

@@ -131,10 +131,3 @@ class PromptBuilder:
         return load_prompt("services/vision")
 
 
-# 保持旧接口兼容：导出原始常量名（实际调用 PromptBuilder）
-# 这样旧 import 语句在重构期间不会立即报错，但建议逐步改为 PromptBuilder。
-SUPERVISOR_SYSTEM_PROMPT = PromptBuilder.build_supervisor_prompt("")
-ORDER_AGENT_SYSTEM_PROMPT = PromptBuilder.build_agent_prompt("order", [], 0)
-INQUIRY_AGENT_SYSTEM_PROMPT = PromptBuilder.build_agent_prompt("inquiry", [], 0)
-RECOMMEND_AGENT_SYSTEM_PROMPT = PromptBuilder.build_agent_prompt("recommend", [], 0)
-SERVICE_AGENT_SYSTEM_PROMPT = PromptBuilder.build_agent_prompt("service", [], 0)

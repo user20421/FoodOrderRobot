@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
-from typing import Dict, Any, List, Optional, Tuple
+from typing import Dict, Any, List, Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -21,7 +21,7 @@ from app.core.logging_config import get_logger
 from app.core.content_loader import get_menu_items, get_faq_data, get_store_docs
 from app.services import menu_service, order_service
 from app.repositories.order_repo import order_repo
-from app.ai.graph.context import get_top_selling_dishes
+from app.services.menu_service import get_top_selling_dishes
 
 logger = get_logger(__name__)
 
@@ -181,19 +181,6 @@ def _has_mixed_intent(message: str) -> bool:
 
     has_order = bool(re.search(_STRONG_ORDER_SIGNALS, message)) or len(_parse_cart_actions(message)) > 0
     return has_order
-
-
-def _extract_quantity_unit_prefix(text: str, pos: int) -> Tuple[Optional[str], int]:
-    """
-    从位置 pos 向前查找可选的数量+单位前缀。
-    返回 (数量字符串, 新的起始位置)。
-    """
-    # 向前最多看 5 个字符，查找"数量+单位"或"数量"
-    prefix = text[max(0, pos - 8):pos]
-    m = re.search(r"([一二两三四五六七八九十\d]+)\s*(?:份|个|碗|盘|杯|份儿|个儿)?\s*$", prefix)
-    if m:
-        return m.group(1), pos - len(m.group(0))
-    return None, pos
 
 
 def _parse_cart_actions(message: str) -> List[CartAction]:

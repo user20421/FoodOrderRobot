@@ -62,9 +62,9 @@ async def image_search(
         for m in matches[:3]:
             name = m.get("name", "")
             reason = m.get("reason", "")
-            item = next((i for i in menu_items if i.name == name), None)
+            item = next((i for i in menu_items if i.get("name") == name), None)
             if item:
-                lines.append(f"• {item.name}（{item.price:.0f}元）- {reason}")
+                lines.append(f"• {item['name']}（{item['price']:.0f}元）- {reason}")
             else:
                 lines.append(f"• {name} - {reason}")
 

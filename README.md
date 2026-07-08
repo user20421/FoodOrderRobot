@@ -202,6 +202,8 @@ python start.py --prod
 点餐机器人/
 ├── start.py                  # 一键启动脚本（开发 / 生产）
 ├── README.md
+├── scripts/                  # 开发辅助脚本
+│   └── test_db.py            # 数据库服务连通性测试
 ├── backend/                  # FastAPI 后端
 │   ├── app/
 │   │   ├── main.py           # 应用入口
@@ -222,7 +224,6 @@ python start.py --prod
 │   │   └── utils/            # 工具函数
 │   ├── knowledge/            # Markdown 化知识库（菜单、FAQ、店铺文档）
 │   ├── prompts/              # Markdown 化提示词（Supervisor / Agent / Service）
-│   ├── data/                 # 模拟数据与初始化脚本
 │   ├── tests/                # 测试用例
 │   └── requirements.txt
 │

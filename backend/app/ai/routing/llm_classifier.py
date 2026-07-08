@@ -124,7 +124,6 @@ async def generate_direct_reply(
     - greeting：使用内置问候模板
     - faq_direct：先检索 RAG 知识库，再基于检索结果生成回复，避免幻觉
     """
-    from app.ai.agents.prompts import PromptBuilder
     from app.ai.rag.retriever import retrieve_knowledge
 
     text = message.strip()

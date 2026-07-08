@@ -7,7 +7,6 @@ Handoff 多智能体节点。
 from __future__ import annotations
 
 import json
-import re
 from typing import Any, Dict, List, Optional
 from langchain_core.runnables import RunnableConfig
 
@@ -239,6 +238,7 @@ async def supervisor_node(state: Dict[str, Any], config: Optional[RunnableConfig
         SystemMessage(content=PromptBuilder.build_supervisor_prompt(last_user_msg or "你好")),
         HumanMessage(content=last_user_msg or "你好"),
     ]
+    decision: Dict[str, Any] = {}
     try:
         raw = await llm.ainvoke(prompt)
         content = raw.content.strip()

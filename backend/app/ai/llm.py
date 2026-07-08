@@ -97,10 +97,3 @@ async def check_llm_health() -> dict:
             return {"ok": False, "reason": f"模型 '{settings.chat_model}' 返回异常: {resp}"}
     except Exception as e:
         return {"ok": False, "reason": f"智谱 AI 连接测试失败: {e}"}
-
-
-def reset_llm():
-    """重置 LLM 实例（用于切换模型等场景）"""
-    global _llm_instances, _embedding_instance
-    _llm_instances = {}
-    _embedding_instance = None
